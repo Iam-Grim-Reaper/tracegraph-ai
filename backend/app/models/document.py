@@ -47,6 +47,10 @@ class Document(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc)
     )
 
+class ParsedPage(BaseModel):
+    page_number: int = Field(ge=1)
+    text: str
+
 
 class ChunkMetadata(BaseModel):
     page_number: int | None = None
@@ -87,3 +91,7 @@ class Citation(BaseModel):
     section: str | None = None
 
     quoted_text: str | None = None
+    
+class IngestionResult(BaseModel):
+    document: Document
+    chunks: list[DocumentChunk]
