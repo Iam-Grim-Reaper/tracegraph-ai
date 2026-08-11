@@ -328,6 +328,21 @@ class HybridStore:
         )
 
         return response.points
+    def retrieve_by_ids(
+        self,
+        point_ids: list[str],
+    ):
+        if not point_ids:
+            return []
+
+        return self.client.retrieve(
+            collection_name=(
+                self.collection_name
+            ),
+            ids=point_ids,
+            with_payload=True,
+            with_vectors=False,
+    )
 
     def count_points(
         self,
