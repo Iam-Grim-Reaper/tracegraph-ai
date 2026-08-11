@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_collection: str = "tracegraph_chunks"
     qdrant_contextual_collection: str = "tracegraph_chunks_contextual"
+    qdrant_hybrid_collection: str = "tracegraph_chunks_hybrid"
 
     model_config = SettingsConfigDict(
         env_file=".env",
