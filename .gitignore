@@ -75,3 +75,6 @@ Thumbs.db
 
 uploads/
 data/
+
+# Local contextual retrieval cache
+.cache/

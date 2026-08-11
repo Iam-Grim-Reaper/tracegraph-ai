@@ -13,13 +13,15 @@ class Settings(BaseSettings):
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = 768
 
-    
+
     generation_model: str = "gemini-3.6-flash"
+    contextualization_model: str = "gemini-3.5-flash-lite"
 
     # Qdrant
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
     qdrant_collection: str = "tracegraph_chunks"
+    qdrant_contextual_collection: str = "tracegraph_chunks_contextual"
 
     model_config = SettingsConfigDict(
         env_file=".env",

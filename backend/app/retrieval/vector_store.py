@@ -8,7 +8,10 @@ from app.models.document import (
 
 
 class QdrantVectorStore:
-    def __init__(self):
+    def __init__(
+        self,
+        collection_name: str | None = None,
+    ):
         if not settings.qdrant_url:
             raise ValueError(
                 "QDRANT_URL is not configured"
@@ -20,8 +23,9 @@ class QdrantVectorStore:
             )
 
         self.collection_name = (
-            settings.qdrant_collection
-        )
+             collection_name
+             or settings.qdrant_collection
+            )
 
         self.vector_size = (
             settings.embedding_dimensions
