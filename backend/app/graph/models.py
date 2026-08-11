@@ -70,7 +70,36 @@ class ExtractedGraph(BaseModel):
     ] = Field(
         default_factory=list
     )
+class ChunkGraphExtraction(BaseModel):
+    """
+    Graph information extracted from one chunk.
+    """
 
+    chunk_index: int = Field(
+        ge=0
+    )
+
+    entities: list[EntityCandidate] = Field(
+        default_factory=list
+    )
+
+    relationships: list[
+        RelationshipCandidate
+    ] = Field(
+        default_factory=list
+    )
+
+
+class GraphExtractionBatch(BaseModel):
+    """
+    Structured response for multiple chunks.
+    """
+
+    chunks: list[
+        ChunkGraphExtraction
+    ] = Field(
+        default_factory=list
+    )
 
 class GraphEntity(BaseModel):
     """

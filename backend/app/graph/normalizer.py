@@ -52,6 +52,128 @@ class EntityNormalizer:
 
         return value.strip()
 
+    def resolve_alias_entities(
+        self,
+        candidates: list[EntityCandidate],
+    ) -> list[EntityCandidate]:
+        if not candidates:
+            return []
+
+        remaining = list(candidates)
+        resolved: list[EntityCandidate] = []
+
+        while remaining:
+            current = remaining.pop(0)
+
+            cluster = [current]
+            changed = True
+
+            while changed:
+                changed = False
+                cluster_keys = set()
+
+                for item in cluster:
+                    cluster_keys.add(
+                        self.normalize_name(
+                            item.name
+                        )
+                    )
+
+                    for alias in item.aliases:
+                        cluster_keys.add(
+                            self.normalize_name(
+                                alias
+                            )
+                        )
+
+                matches = []
+
+                for candidate in remaining:
+                    if (
+                        candidate.entity_type
+                        != current.entity_type
+                    ):
+                        continue
+
+                    candidate_keys = {
+                        self.normalize_name(
+                            candidate.name
+                        )
+                    }
+
+                    candidate_keys.update(
+                        self.normalize_name(alias)
+                        for alias
+                        in candidate.aliases
+                        if alias.strip()
+                    )
+
+                    if cluster_keys & candidate_keys:
+                        matches.append(
+                            candidate
+                        )
+
+                for match in matches:
+                    remaining.remove(match)
+                    cluster.append(match)
+                    changed = True
+
+            canonical = min(
+                cluster,
+                key=lambda item: (
+                    len(item.name.strip()),
+                    item.name.casefold(),
+                ),
+            )
+
+            alias_values: dict[str, str] = {}
+
+            canonical_normalized = (
+                self.normalize_name(
+                    canonical.name
+                )
+            )
+
+            for item in cluster:
+                values = [
+                    item.name,
+                    *item.aliases,
+                ]
+
+                for value in values:
+                    if not value.strip():
+                        continue
+
+                    normalized = (
+                        self.normalize_name(
+                            value
+                        )
+                    )
+
+                    if (
+                        normalized
+                        == canonical_normalized
+                    ):
+                        continue
+
+                    alias_values[
+                        normalized
+                    ] = value.strip()
+
+            resolved.append(
+                EntityCandidate(
+                    name=canonical.name.strip(),
+                    entity_type=(
+                        canonical.entity_type
+                    ),
+                    aliases=sorted(
+                        alias_values.values()
+                    ),
+                )
+            )
+
+        return resolved
+
     def normalize_entity(
         self,
         candidate: EntityCandidate,

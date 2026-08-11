@@ -41,12 +41,12 @@ def test_equivalent_names_get_same_id():
         entity_type=EntityType.TECHNOLOGY,
     )
 
-    first_entity = (
-        normalizer.normalize_entity(first)
+    first_entity = normalizer.normalize_entity(
+        first
     )
 
-    second_entity = (
-        normalizer.normalize_entity(second)
+    second_entity = normalizer.normalize_entity(
+        second
     )
 
     assert (
@@ -103,10 +103,8 @@ def test_duplicate_entities_are_merged():
         ),
     ]
 
-    entities = (
-        normalizer.normalize_entities(
-            candidates
-        )
+    entities = normalizer.normalize_entities(
+        candidates
     )
 
     assert len(entities) == 1
@@ -137,3 +135,45 @@ def test_aliases_are_deduplicated():
     assert entity.aliases == [
         "ConvNeXt"
     ]
+
+
+def test_semantic_alias_entities_are_merged():
+    normalizer = EntityNormalizer()
+
+    candidates = [
+        EntityCandidate(
+            name=(
+                "Gradient-weighted Class "
+                "Activation Mapping"
+            ),
+            entity_type=EntityType.METHOD,
+            aliases=[
+                "Grad-CAM",
+            ],
+        ),
+        EntityCandidate(
+            name="Grad-CAM",
+            entity_type=EntityType.METHOD,
+            aliases=[
+                (
+                    "Gradient-weighted Class "
+                    "Activation Mapping"
+                ),
+            ],
+        ),
+    ]
+
+    resolved = (
+        normalizer.resolve_alias_entities(
+            candidates
+        )
+    )
+
+    assert len(resolved) == 1
+
+    assert resolved[0].name == "Grad-CAM"
+
+    assert (
+        "Gradient-weighted Class Activation Mapping"
+        in resolved[0].aliases
+    )

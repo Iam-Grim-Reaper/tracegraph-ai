@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     generation_model: str = "gemini-3.6-flash"
     contextualization_model: str = "gemini-3.5-flash-lite"
 
+    graph_extraction_model: str = (
+    "gemini-3.5-flash-lite"
+    )
+
+
     # Qdrant
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None

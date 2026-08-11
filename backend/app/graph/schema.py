@@ -10,6 +10,8 @@ class EntityType(StrEnum):
     PROJECT = "Project"
     TECHNOLOGY = "Technology"
     PRODUCT = "Product"
+    MODEL = "Model"
+    METHOD = "Method"
     CONCEPT = "Concept"
     DATASET = "Dataset"
     LOCATION = "Location"
@@ -46,6 +48,14 @@ ALLOWED_RELATIONSHIP_TYPES = {
     relationship_type.value
     for relationship_type in RelationshipType
 }
+
+EXTRACTABLE_RELATIONSHIP_TYPES = (
+    ALLOWED_RELATIONSHIP_TYPES
+    - {
+        RelationshipType.CONTAINS.value,
+        RelationshipType.MENTIONS.value,
+    }
+)
 
 
 SCHEMA_QUERIES = [
@@ -92,6 +102,65 @@ SCHEMA_QUERIES = [
     """,
 ]
 
+RELATIONSHIP_GUIDANCE = {
+    "USES": (
+        "The source explicitly uses the target "
+        "method, technology, model, or resource."
+    ),
+    "WORKS_ON": (
+        "A person or team explicitly works on "
+        "the target project or product."
+    ),
+    "OWNED_BY": (
+        "The source is explicitly owned by "
+        "the target."
+    ),
+    "PART_OF": (
+        "The source is structurally or "
+        "organizationally part of the target. "
+        "Do not use this merely because the "
+        "target uses the source."
+    ),
+    "DEPENDS_ON": (
+        "The source explicitly depends on "
+        "the target."
+    ),
+    "DEVELOPED_BY": (
+        "The source was developed or created "
+        "by the target."
+    ),
+    "RELATED_TO": (
+        "A meaningful relationship is explicit "
+        "but no more specific allowed "
+        "relationship applies."
+    ),
+    "LOCATED_IN": (
+        "The source is explicitly located in "
+        "the target location."
+    ),
+    "GENERATED_BY": (
+        "The source was explicitly generated "
+        "or produced by the target."
+    ),
+    "TRAINED_ON": (
+        "A model was explicitly trained using "
+        "the target dataset."
+    ),
+    "EVALUATED_ON": (
+        "A model or system was explicitly "
+        "evaluated or tested on the target "
+        "dataset."
+    ),
+    "EXPLAINED_BY": (
+        "A model or system has its predictions "
+        "explained or interpreted using the "
+        "target method."
+    ),
+    "APPLIES_TO": (
+        "A method, technique, or concept is "
+        "explicitly applied to the target."
+    ),
+}
 
 def initialize_graph_schema(
     store: Neo4jGraphStore,
