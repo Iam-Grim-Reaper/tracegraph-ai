@@ -8,6 +8,7 @@ from app.models.document import (
     DocumentMetadata,
     FileType,
     ParsedPage,
+    create_stable_document_id,
 )
 
 
@@ -15,7 +16,10 @@ class PDFLoader:
     def load(
         self,
         file_path: str | Path,
-    ) -> tuple[Document, list[ParsedPage]]:
+    ) -> tuple[
+        Document,
+        list[ParsedPage],
+    ]:
         path = Path(file_path)
 
         if not path.exists():
@@ -30,20 +34,42 @@ class PDFLoader:
 
         if path.suffix.lower() != ".pdf":
             raise ValueError(
-                f"Unsupported file type: {path.suffix}. "
+                f"Unsupported file type: "
+                f"{path.suffix}. "
                 "Expected .pdf"
             )
 
+        # Read the original file bytes.
+        #
+        # These bytes are used to create the
+        # deterministic document ID.
+        file_bytes = path.read_bytes()
+
+        if not file_bytes:
+            raise ValueError(
+                f"PDF file is empty: {path.name}"
+            )
+
+        document_id = (
+            create_stable_document_id(
+                content=file_bytes,
+                file_type=FileType.PDF,
+            )
+        )
+
         try:
             reader = PdfReader(path)
+
         except PdfReadError as exc:
             raise ValueError(
-                f"Unable to read PDF: {path.name}"
+                f"Unable to read PDF: "
+                f"{path.name}"
             ) from exc
 
         if reader.is_encrypted:
             raise ValueError(
-                "Encrypted PDFs are not supported yet"
+                "Encrypted PDFs are not "
+                "supported yet"
             )
 
         pdf_metadata = reader.metadata
@@ -60,38 +86,51 @@ class PDFLoader:
             else None
         )
 
-        pages: list[ParsedPage] = []
+        pages: list[
+            ParsedPage
+        ] = []
 
         for page_number, page in enumerate(
             reader.pages,
             start=1,
         ):
-            extracted_text = page.extract_text() or ""
+            extracted_text = (
+                page.extract_text()
+                or ""
+            )
 
-            cleaned_text = extracted_text.strip()
+            cleaned_text = (
+                extracted_text.strip()
+            )
 
             if not cleaned_text:
                 continue
 
             pages.append(
                 ParsedPage(
-                    page_number=page_number,
+                    page_number=(
+                        page_number
+                    ),
                     text=cleaned_text,
                 )
             )
 
         if not pages:
             raise ValueError(
-                "PDF contains no extractable text"
+                "PDF contains no "
+                "extractable text"
             )
 
         document = Document(
+            id=document_id,
             filename=path.name,
             file_type=FileType.PDF,
             metadata=DocumentMetadata(
                 title=title,
                 author=author,
-                page_count=len(reader.pages),
+                page_count=(
+                    len(reader.pages)
+                ),
             ),
         )
 

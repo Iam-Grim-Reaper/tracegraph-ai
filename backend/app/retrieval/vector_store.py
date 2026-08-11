@@ -81,6 +81,7 @@ class QdrantVectorStore:
 
             payload = {
                 "document_id": str(document.id),
+                "chunk_id": str(chunk.id),
                 "filename": document.filename,
                 "file_type": document.file_type.value,
                 "title": document.metadata.title,

@@ -21,7 +21,8 @@ class GraphRelationshipValidator:
         relationship: RelationshipCandidate,
     ) -> tuple[bool, str | None]:
         evidence = (
-            relationship.evidence_text
+            relationship
+            .evidence_text
             .strip()
             .casefold()
         )
@@ -30,17 +31,26 @@ class GraphRelationshipValidator:
             relationship.relationship_type
         )
 
-        # Reject low-confidence relationships
-        # before they enter the graph.
+        # -------------------------------------------------
+        # Global confidence threshold
+        # -------------------------------------------------
         if relationship.confidence < 0.70:
             return (
                 False,
-                "Relationship confidence below 0.70",
+                "Relationship confidence "
+                "below 0.70",
             )
 
-        # TRAINED_ON must be:
+        # -------------------------------------------------
+        # TRAINED_ON
+        #
+        # Must be:
+        #
         # Model -> Dataset
-        # with explicit evidence of training.
+        #
+        # and the evidence must explicitly
+        # establish use as training data.
+        # -------------------------------------------------
         if (
             relationship_type
             == RelationshipType.TRAINED_ON
@@ -51,7 +61,8 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "TRAINED_ON source must be Model",
+                    "TRAINED_ON source "
+                    "must be Model",
                 )
 
             if (
@@ -60,13 +71,26 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "TRAINED_ON target must be Dataset",
+                    "TRAINED_ON target "
+                    "must be Dataset",
                 )
 
+            # Deliberately conservative.
+            #
+            # Do NOT include generic:
+            #
+            # "trained using"
+            # "trained with"
+            #
+            # because:
+            #
+            # "trained using transfer learning
+            # with ImageNet weights"
+            #
+            # does not establish that this model
+            # was trained on ImageNet.
             training_cues = (
                 "trained on",
-                "trained using",
-                "trained with",
                 "training data",
                 "training dataset",
                 "training set",
@@ -79,12 +103,15 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "TRAINED_ON requires explicit "
-                    "training evidence",
+                    "TRAINED_ON requires "
+                    "explicit training evidence",
                 )
 
-        # EVALUATED_ON should point
-        # to a Dataset.
+        # -------------------------------------------------
+        # EVALUATED_ON
+        #
+        # Target must be a Dataset.
+        # -------------------------------------------------
         if (
             relationship_type
             == RelationshipType.EVALUATED_ON
@@ -95,11 +122,15 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "EVALUATED_ON target must be Dataset",
+                    "EVALUATED_ON target "
+                    "must be Dataset",
                 )
 
-        # EXPLAINED_BY should be:
+        # -------------------------------------------------
+        # EXPLAINED_BY
+        #
         # Model -> Method
+        # -------------------------------------------------
         if (
             relationship_type
             == RelationshipType.EXPLAINED_BY
@@ -110,7 +141,8 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "EXPLAINED_BY source must be Model",
+                    "EXPLAINED_BY source "
+                    "must be Model",
                 )
 
             if (
@@ -119,11 +151,15 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "EXPLAINED_BY target must be Method",
+                    "EXPLAINED_BY target "
+                    "must be Method",
                 )
 
-        # APPLIES_TO should start
-        # from a Method.
+        # -------------------------------------------------
+        # APPLIES_TO
+        #
+        # Source must be a Method.
+        # -------------------------------------------------
         if (
             relationship_type
             == RelationshipType.APPLIES_TO
@@ -134,7 +170,80 @@ class GraphRelationshipValidator:
             ):
                 return (
                     False,
-                    "APPLIES_TO source must be Method",
+                    "APPLIES_TO source "
+                    "must be Method",
+                )
+
+        # -------------------------------------------------
+        # DEVELOPED_BY
+        #
+        # Expected:
+        #
+        # Model / Dataset / Method / Product
+        # ->
+        # Person / Organization
+        #
+        # The canonicalizer repairs obvious
+        # Person -> thing reversals first.
+        # -------------------------------------------------
+        if (
+            relationship_type
+            == RelationshipType.DEVELOPED_BY
+        ):
+            if (
+                relationship.source_type
+                == EntityType.PERSON
+            ):
+                return (
+                    False,
+                    "DEVELOPED_BY source "
+                    "cannot be Person",
+                )
+
+            if (
+                relationship.target_type
+                not in {
+                    EntityType.PERSON,
+                    EntityType.ORGANIZATION,
+                    EntityType.TEAM,
+                }
+            ):
+                return (
+                    False,
+                    "DEVELOPED_BY target must "
+                    "be Person, Organization, "
+                    "or Team",
+                )
+
+        # -------------------------------------------------
+        # DEPENDS_ON
+        #
+        # Mere use, benchmarking, latency,
+        # deployment or execution on a
+        # technology does not prove dependency.
+        # -------------------------------------------------
+        if (
+            relationship_type
+            == RelationshipType.DEPENDS_ON
+        ):
+            dependency_cues = (
+                "depends on",
+                "dependent on",
+                "requires",
+                "required for",
+                "prerequisite",
+                "relies on",
+                "reliant on",
+            )
+
+            if not any(
+                cue in evidence
+                for cue in dependency_cues
+            ):
+                return (
+                    False,
+                    "DEPENDS_ON requires "
+                    "explicit dependency evidence",
                 )
 
         return True, None
@@ -157,8 +266,10 @@ class GraphRelationshipValidator:
         ] = []
 
         for relationship in relationships:
-            is_valid, reason = self.validate(
-                relationship
+            is_valid, reason = (
+                self.validate(
+                    relationship
+                )
             )
 
             if is_valid:
@@ -169,12 +280,18 @@ class GraphRelationshipValidator:
             else:
                 rejected.append(
                     RejectedRelationship(
-                        relationship=relationship,
+                        relationship=(
+                            relationship
+                        ),
                         reason=(
                             reason
-                            or "Unknown validation error"
+                            or
+                            "Unknown validation error"
                         ),
                     )
                 )
 
-        return accepted, rejected
+        return (
+            accepted,
+            rejected,
+        )

@@ -1,16 +1,19 @@
 import re
-from uuid import uuid4
 
 from app.models.document import (
     ChunkMetadata,
     Document,
     DocumentChunk,
     ParsedPage,
+    create_stable_chunk_id,
 )
 
 
 class TextChunker:
-    def __init__(self, max_chars: int = 1000):
+    def __init__(
+        self,
+        max_chars: int = 1000,
+    ):
         if max_chars < 100:
             raise ValueError(
                 "max_chars must be at least 100"
@@ -23,10 +26,15 @@ class TextChunker:
         document: Document,
         text: str,
     ) -> list[DocumentChunk]:
-        chunk_texts = self._chunk_text(text)
+        chunk_texts = self._chunk_text(
+            text
+        )
 
         chunk_specs = [
-            (None, chunk_text)
+            (
+                None,
+                chunk_text,
+            )
             for chunk_text in chunk_texts
         ]
 
@@ -42,7 +50,8 @@ class TextChunker:
     ) -> list[DocumentChunk]:
         if not pages:
             raise ValueError(
-                "Cannot chunk an empty page list"
+                "Cannot chunk an empty "
+                "page list"
             )
 
         chunk_specs: list[
@@ -67,7 +76,8 @@ class TextChunker:
 
         if not chunk_specs:
             raise ValueError(
-                "Pages contain no chunkable text"
+                "Pages contain no "
+                "chunkable text"
             )
 
         return self._build_chunks(
@@ -86,8 +96,10 @@ class TextChunker:
                 "Cannot chunk empty text"
             )
 
-        paragraphs = self._extract_paragraphs(
-            cleaned_text
+        paragraphs = (
+            self._extract_paragraphs(
+                cleaned_text
+            )
         )
 
         chunk_texts: list[str] = []
@@ -106,15 +118,21 @@ class TextChunker:
                     continue
 
                 candidate = (
-                    f"{current_chunk}\n\n{part}"
+                    f"{current_chunk}"
+                    f"\n\n{part}"
                 )
 
-                if len(candidate) <= self.max_chars:
+                if (
+                    len(candidate)
+                    <= self.max_chars
+                ):
                     current_chunk = candidate
+
                 else:
                     chunk_texts.append(
                         current_chunk
                     )
+
                     current_chunk = part
 
         if current_chunk:
@@ -131,18 +149,40 @@ class TextChunker:
             tuple[int | None, str]
         ],
     ) -> list[DocumentChunk]:
+        # IDs are now deterministic.
+        #
+        # Same:
+        # document ID
+        # + index
+        # + page
+        # + text
+        #
+        # = same chunk UUID.
         chunk_ids = [
-            uuid4()
-            for _ in chunk_specs
+            create_stable_chunk_id(
+                document_id=document.id,
+                chunk_index=index,
+                text=chunk_text,
+                page_number=page_number,
+            )
+            for index, (
+                page_number,
+                chunk_text,
+            ) in enumerate(
+                chunk_specs
+            )
         ]
 
-        chunks: list[DocumentChunk] = []
+        chunks: list[
+            DocumentChunk
+        ] = []
 
         for index, (
             page_number,
             chunk_text,
-        ) in enumerate(chunk_specs):
-
+        ) in enumerate(
+            chunk_specs
+        ):
             previous_chunk_id = (
                 chunk_ids[index - 1]
                 if index > 0
@@ -151,7 +191,10 @@ class TextChunker:
 
             next_chunk_id = (
                 chunk_ids[index + 1]
-                if index < len(chunk_ids) - 1
+                if (
+                    index
+                    < len(chunk_ids) - 1
+                )
                 else None
             )
 
@@ -161,15 +204,21 @@ class TextChunker:
                 chunk_index=index,
                 text=chunk_text,
                 metadata=ChunkMetadata(
-                    page_number=page_number,
+                    page_number=(
+                        page_number
+                    ),
                 ),
                 previous_chunk_id=(
                     previous_chunk_id
                 ),
-                next_chunk_id=next_chunk_id,
+                next_chunk_id=(
+                    next_chunk_id
+                ),
             )
 
-            chunks.append(chunk)
+            chunks.append(
+                chunk
+            )
 
         return chunks
 
@@ -192,7 +241,9 @@ class TextChunker:
             ).strip()
 
             if cleaned:
-                paragraphs.append(cleaned)
+                paragraphs.append(
+                    cleaned
+                )
 
         return paragraphs
 
@@ -200,8 +251,13 @@ class TextChunker:
         self,
         paragraph: str,
     ) -> list[str]:
-        if len(paragraph) <= self.max_chars:
-            return [paragraph]
+        if (
+            len(paragraph)
+            <= self.max_chars
+        ):
+            return [
+                paragraph
+            ]
 
         words = paragraph.split()
 
@@ -214,15 +270,21 @@ class TextChunker:
                     parts.append(
                         current_part
                     )
+
                     current_part = ""
 
-                while len(word) > self.max_chars:
+                while (
+                    len(word)
+                    > self.max_chars
+                ):
                     parts.append(
-                        word[: self.max_chars]
+                        word[
+                            :self.max_chars
+                        ]
                     )
 
                     word = word[
-                        self.max_chars :
+                        self.max_chars:
                     ]
 
                 if word:
@@ -236,13 +298,22 @@ class TextChunker:
                 else word
             )
 
-            if len(candidate) <= self.max_chars:
+            if (
+                len(candidate)
+                <= self.max_chars
+            ):
                 current_part = candidate
+
             else:
-                parts.append(current_part)
+                parts.append(
+                    current_part
+                )
+
                 current_part = word
 
         if current_part:
-            parts.append(current_part)
+            parts.append(
+                current_part
+            )
 
         return parts

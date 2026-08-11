@@ -1,12 +1,23 @@
 from pathlib import Path
 
-from app.graph.extractor import GraphExtractor
+from app.graph.entity_resolver import (
+    GlobalEntityResolver,
+)
+from app.graph.extractor import (
+    GraphExtractor,
+)
 from app.graph.postprocessor import (
     GraphPostProcessor,
 )
-from app.graph.store import Neo4jGraphStore
-from app.graph.writer import Neo4jGraphWriter
-from app.ingestion.chunker import TextChunker
+from app.graph.store import (
+    Neo4jGraphStore,
+)
+from app.graph.writer import (
+    Neo4jGraphWriter,
+)
+from app.ingestion.chunker import (
+    TextChunker,
+)
 from app.ingestion.loaders.pdf_loader import (
     PDFLoader,
 )
@@ -66,6 +77,10 @@ def main():
 
     store = Neo4jGraphStore()
 
+    resolver = GlobalEntityResolver(
+        store=store
+    )
+
     writer = Neo4jGraphWriter(
         store=store
     )
@@ -73,7 +88,8 @@ def main():
     try:
         store.verify_connectivity()
 
-        total_entities = 0
+        total_local_entities = 0
+        total_resolved_entities = 0
         total_relationships = 0
         total_rejected = 0
 
@@ -82,10 +98,22 @@ def main():
                 chunk.chunk_index
             ]
 
+            # 1. Local post-processing:
+            # aliases, normalization,
+            # relationship validation,
+            # evidence grounding.
             processed = processor.process(
                 document=document,
                 chunk=chunk,
                 extracted_graph=raw_graph,
+            )
+
+            # 2. Global entity resolution:
+            # compare chunk-local entities
+            # against entities that already
+            # exist in Neo4j.
+            resolved = resolver.resolve(
+                processed
             )
 
             print(
@@ -94,52 +122,66 @@ def main():
             )
 
             print(
-                f"  Entities: "
+                "  Local entities: "
                 f"{len(processed.entities)}"
             )
 
             print(
-                f"  Accepted relationships: "
-                f"{len(processed.relationships)}"
+                "  Globally resolved entities: "
+                f"{len(resolved.entities)}"
             )
 
             print(
-                f"  Rejected relationships: "
-                f"{len(processed.rejected_relationships)}"
+                "  Accepted relationships: "
+                f"{len(resolved.relationships)}"
+            )
+
+            print(
+                "  Rejected relationships: "
+                f"{len(resolved.rejected_relationships)}"
             )
 
             for rejected in (
-                processed
-                .rejected_relationships
+                resolved.rejected_relationships
             ):
-                print(
-                    "    REJECTED: "
-                    f"{rejected.relationship.source_name} "
-                    f"{rejected.relationship.relationship_type.value} "
-                    f"{rejected.relationship.target_name}"
+                relationship = (
+                    rejected.relationship
                 )
 
                 print(
-                    f"    Reason: "
+                    "    REJECTED: "
+                    f"{relationship.source_name} "
+                    f"{relationship.relationship_type.value} "
+                    f"{relationship.target_name}"
+                )
+
+                print(
+                    "    Reason: "
                     f"{rejected.reason}"
                 )
 
+            # Write only the globally resolved
+            # graph to Neo4j.
             writer.write_chunk_graph(
                 document=document,
                 chunk=chunk,
-                graph=processed,
+                graph=resolved,
             )
 
-            total_entities += len(
+            total_local_entities += len(
                 processed.entities
             )
 
+            total_resolved_entities += len(
+                resolved.entities
+            )
+
             total_relationships += len(
-                processed.relationships
+                resolved.relationships
             )
 
             total_rejected += len(
-                processed.rejected_relationships
+                resolved.rejected_relationships
             )
 
         print("\n" + "=" * 60)
@@ -147,8 +189,13 @@ def main():
         print("=" * 60)
 
         print(
-            "Processed entity occurrences:",
-            total_entities,
+            "Local entity occurrences:",
+            total_local_entities,
+        )
+
+        print(
+            "Resolved entity occurrences:",
+            total_resolved_entities,
         )
 
         print(
@@ -172,6 +219,7 @@ def main():
                 count(c) AS chunks
 
             MATCH (e:Entity)
+
             RETURN
                 documents,
                 chunks,
@@ -185,14 +233,21 @@ def main():
         relationship_counts = store.query(
             """
             MATCH ()-[r]->()
+
             RETURN
-                type(r) AS relationship_type,
-                count(r) AS count
-            ORDER BY relationship_type
+                type(r)
+                    AS relationship_type,
+                count(r)
+                    AS count
+
+            ORDER BY
+                relationship_type
             """
         )
 
-        print("\nRelationship counts:")
+        print(
+            "\nRelationship counts:"
+        )
 
         for row in relationship_counts:
             print(row)

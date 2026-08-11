@@ -1,7 +1,12 @@
+from app.graph.normalizer import (
+    EntityNormalizer,
+)
 from app.graph.postprocessor import (
     ProcessedChunkGraph,
 )
-from app.graph.store import Neo4jGraphStore
+from app.graph.store import (
+    Neo4jGraphStore,
+)
 from app.models.document import (
     Document,
     DocumentChunk,
@@ -14,6 +19,7 @@ class Neo4jGraphWriter:
         store: Neo4jGraphStore,
     ):
         self.store = store
+        self.normalizer = EntityNormalizer()
 
     def write_chunk_graph(
         self,
@@ -53,6 +59,7 @@ class Neo4jGraphWriter:
                     document_id: $document_id
                 }
             )
+
             SET
                 d.filename = $filename,
                 d.file_type = $file_type,
@@ -64,19 +71,26 @@ class Neo4jGraphWriter:
                     chunk_id: $chunk_id
                 }
             )
+
             SET
                 c.document_id = $document_id,
                 c.chunk_index = $chunk_index,
                 c.page_number = $page_number,
                 c.text = $text
 
-            MERGE (d)-[:CONTAINS]->(c)
+            MERGE (
+                d
+            )-[:CONTAINS]->(
+                c
+            )
             """,
             {
                 "document_id": str(
                     document.id
                 ),
-                "filename": document.filename,
+                "filename": (
+                    document.filename
+                ),
                 "file_type": (
                     document.file_type.value
                 ),
@@ -104,6 +118,19 @@ class Neo4jGraphWriter:
         entities,
     ) -> None:
         for entity in entities:
+            # Store normalized aliases so that
+            # global entity resolution can
+            # efficiently match aliases across
+            # different chunks.
+            normalized_aliases = sorted(
+                {
+                    self.normalizer
+                    .normalize_name(alias)
+                    for alias in entity.aliases
+                    if alias.strip()
+                }
+            )
+
             self.store.query(
                 """
                 MERGE (
@@ -120,6 +147,7 @@ class Neo4jGraphWriter:
                 SET
                     e.entity_type =
                         $entity_type,
+
                     e.aliases =
                         reduce(
                             acc =
@@ -127,10 +155,32 @@ class Neo4jGraphWriter:
                                     e.aliases,
                                     []
                                 ),
+
                             alias IN $aliases |
+
                             CASE
                                 WHEN alias IN acc
                                 THEN acc
+
+                                ELSE acc + alias
+                            END
+                        ),
+
+                    e.normalized_aliases =
+                        reduce(
+                            acc =
+                                coalesce(
+                                    e.normalized_aliases,
+                                    []
+                                ),
+
+                            alias IN
+                                $normalized_aliases |
+
+                            CASE
+                                WHEN alias IN acc
+                                THEN acc
+
                                 ELSE acc + alias
                             END
                         )
@@ -141,7 +191,9 @@ class Neo4jGraphWriter:
                     "entity_id": (
                         entity.entity_id
                     ),
-                    "name": entity.name,
+                    "name": (
+                        entity.name
+                    ),
                     "normalized_name": (
                         entity.normalized_name
                     ),
@@ -151,7 +203,12 @@ class Neo4jGraphWriter:
                     "entity_label": (
                         entity.entity_type.value
                     ),
-                    "aliases": entity.aliases,
+                    "aliases": (
+                        entity.aliases
+                    ),
+                    "normalized_aliases": (
+                        normalized_aliases
+                    ),
                 },
             )
 
@@ -175,7 +232,11 @@ class Neo4jGraphWriter:
                     }
                 )
 
-                MERGE (c)-[:MENTIONS]->(e)
+                MERGE (
+                    c
+                )-[:MENTIONS]->(
+                    e
+                )
                 """,
                 {
                     "chunk_id": str(
@@ -222,10 +283,13 @@ class Neo4jGraphWriter:
                 SET
                     r.confidence =
                         $confidence,
+
                     r.evidence_text =
                         $evidence_text,
+
                     r.source_document_id =
                         $source_document_id,
+
                     r.page_number =
                         $page_number
                 """,

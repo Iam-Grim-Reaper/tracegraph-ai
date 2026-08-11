@@ -8,7 +8,12 @@ from app.graph.models import (
     GraphEntity,
     GraphRelationship,
 )
-from app.graph.normalizer import EntityNormalizer
+from app.graph.normalizer import (
+    EntityNormalizer,
+)
+from app.graph.relationship_canonicalizer import (
+    RelationshipCanonicalizer,
+)
 from app.graph.validator import (
     GraphRelationshipValidator,
     RejectedRelationship,
@@ -31,7 +36,14 @@ class ProcessedChunkGraph:
 class GraphPostProcessor:
     def __init__(self):
         self.normalizer = EntityNormalizer()
-        self.validator = GraphRelationshipValidator()
+
+        self.canonicalizer = (
+            RelationshipCanonicalizer()
+        )
+
+        self.validator = (
+            GraphRelationshipValidator()
+        )
 
     def process(
         self,
@@ -39,28 +51,64 @@ class GraphPostProcessor:
         chunk: DocumentChunk,
         extracted_graph: ExtractedGraph,
     ) -> ProcessedChunkGraph:
-        # Step 1: Resolve semantic aliases.
+        # -------------------------------------------------
+        # Step 1:
+        # Resolve semantic aliases inside
+        # this extraction.
+        # -------------------------------------------------
         resolved_candidates = (
-            self.normalizer.resolve_alias_entities(
+            self.normalizer
+            .resolve_alias_entities(
                 extracted_graph.entities
             )
         )
 
-        # Step 2: Produce canonical entities.
+        # -------------------------------------------------
+        # Step 2:
+        # Convert candidates into canonical
+        # GraphEntity objects with stable IDs.
+        # -------------------------------------------------
         entities = (
-            self.normalizer.normalize_entities(
+            self.normalizer
+            .normalize_entities(
                 resolved_candidates
             )
         )
 
-        entity_lookup = self._build_entity_lookup(
-            entities
+        entity_lookup = (
+            self._build_entity_lookup(
+                entities
+            )
         )
 
-        # Step 3: Validate relationships.
+        # -------------------------------------------------
+        # Step 3:
+        # Canonicalize relationship direction.
+        #
+        # Example:
+        #
+        # Person DEVELOPED_BY Dataset
+        #
+        # becomes:
+        #
+        # Dataset DEVELOPED_BY Person
+        # -------------------------------------------------
+        canonicalized_relationships = [
+            self.canonicalizer.canonicalize(
+                relationship
+            )
+            for relationship
+            in extracted_graph.relationships
+        ]
+
+        # -------------------------------------------------
+        # Step 4:
+        # Apply deterministic validation.
+        # -------------------------------------------------
         accepted, rejected = (
-            self.validator.filter_relationships(
-                extracted_graph.relationships
+            self.validator
+            .filter_relationships(
+                canonicalized_relationships
             )
         )
 
@@ -69,10 +117,15 @@ class GraphPostProcessor:
         ] = []
 
         for relationship in accepted:
-            # Step 4: Ground claimed evidence
-            # against the actual source chunk.
+            # ---------------------------------------------
+            # Step 5:
+            # Verify that claimed evidence is
+            # grounded in the actual chunk.
+            # ---------------------------------------------
             if not self._evidence_is_grounded(
-                evidence=relationship.evidence_text,
+                evidence=(
+                    relationship.evidence_text
+                ),
                 chunk_text=chunk.text,
             ):
                 rejected.append(
@@ -85,29 +138,40 @@ class GraphPostProcessor:
                         ),
                     )
                 )
+
                 continue
 
-            # Step 5: Resolve endpoints.
+            # ---------------------------------------------
+            # Step 6:
+            # Resolve source/target names to
+            # canonical chunk-local entities.
+            # ---------------------------------------------
             source_key = (
                 relationship.source_type.value,
-                self.normalizer.normalize_name(
+                self.normalizer
+                .normalize_name(
                     relationship.source_name
                 ),
             )
 
             target_key = (
                 relationship.target_type.value,
-                self.normalizer.normalize_name(
+                self.normalizer
+                .normalize_name(
                     relationship.target_name
                 ),
             )
 
-            source_entity = entity_lookup.get(
-                source_key
+            source_entity = (
+                entity_lookup.get(
+                    source_key
+                )
             )
 
-            target_entity = entity_lookup.get(
-                target_key
+            target_entity = (
+                entity_lookup.get(
+                    target_key
+                )
             )
 
             if source_entity is None:
@@ -121,6 +185,7 @@ class GraphPostProcessor:
                         ),
                     )
                 )
+
                 continue
 
             if target_entity is None:
@@ -134,9 +199,13 @@ class GraphPostProcessor:
                         ),
                     )
                 )
+
                 continue
 
-            # Step 6: Attach provenance.
+            # ---------------------------------------------
+            # Step 7:
+            # Attach provenance.
+            # ---------------------------------------------
             relationships.append(
                 GraphRelationship(
                     source_entity_id=(
@@ -146,13 +215,16 @@ class GraphPostProcessor:
                         target_entity.entity_id
                     ),
                     relationship_type=(
-                        relationship.relationship_type
+                        relationship
+                        .relationship_type
                     ),
                     confidence=(
                         relationship.confidence
                     ),
                     evidence_text=(
-                        relationship.evidence_text.strip()
+                        relationship
+                        .evidence_text
+                        .strip()
                     ),
                     source_document_id=str(
                         document.id
@@ -161,7 +233,8 @@ class GraphPostProcessor:
                         chunk.id
                     ),
                     page_number=(
-                        chunk.metadata.page_number
+                        chunk.metadata
+                        .page_number
                     ),
                 )
             )
@@ -193,7 +266,8 @@ class GraphPostProcessor:
             for name in names:
                 key = (
                     entity.entity_type.value,
-                    self.normalizer.normalize_name(
+                    self.normalizer
+                    .normalize_name(
                         name
                     ),
                 )
@@ -226,8 +300,13 @@ class GraphPostProcessor:
         if not normalized_chunk:
             return False
 
-        # Best case: direct normalized match.
-        if normalized_evidence in normalized_chunk:
+        # Best case:
+        # evidence occurs directly in
+        # normalized source text.
+        if (
+            normalized_evidence
+            in normalized_chunk
+        ):
             return True
 
         evidence_tokens = (
@@ -242,8 +321,8 @@ class GraphPostProcessor:
             )
         )
 
-        # Very short evidence is too easy
-        # to match accidentally.
+        # Very short evidence can produce
+        # accidental fuzzy matches.
         if len(evidence_tokens) < 4:
             return False
 
@@ -260,7 +339,9 @@ class GraphPostProcessor:
                 evidence_token_set
                 & chunk_token_set
             )
-            / len(evidence_token_set)
+            / len(
+                evidence_token_set
+            )
         )
 
         window_size = len(
@@ -269,14 +350,19 @@ class GraphPostProcessor:
 
         best_similarity = 0.0
 
-        if len(chunk_tokens) <= window_size:
+        if (
+            len(chunk_tokens)
+            <= window_size
+        ):
             windows = [
                 chunk_tokens
             ]
+
         else:
             windows = [
                 chunk_tokens[
-                    start:start + window_size
+                    start:
+                    start + window_size
                 ]
                 for start in range(
                     len(chunk_tokens)
@@ -289,15 +375,18 @@ class GraphPostProcessor:
             if not window:
                 continue
 
-            similarity = SequenceMatcher(
-                None,
-                " ".join(
-                    evidence_tokens
-                ),
-                " ".join(
-                    window
-                ),
-            ).ratio()
+            similarity = (
+                SequenceMatcher(
+                    None,
+                    " ".join(
+                        evidence_tokens
+                    ),
+                    " ".join(
+                        window
+                    ),
+                )
+                .ratio()
+            )
 
             best_similarity = max(
                 best_similarity,
@@ -331,9 +420,11 @@ class GraphPostProcessor:
     def _normalize_for_match(
         value: str,
     ) -> str:
-        value = unicodedata.normalize(
-            "NFKC",
-            value,
+        value = (
+            unicodedata.normalize(
+                "NFKC",
+                value,
+            )
         )
 
         value = value.casefold()
@@ -345,8 +436,11 @@ class GraphPostProcessor:
             value,
         )
 
-        # Fix PDF spacing such as:
-        # ConvNeXt -Small -> ConvNeXt-Small
+        # Fix PDF spacing:
+        #
+        # ConvNeXt -Small
+        # ->
+        # ConvNeXt-Small
         value = re.sub(
             r"\s*-\s*",
             "-",
