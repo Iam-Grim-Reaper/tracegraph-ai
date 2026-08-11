@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     qdrant_contextual_collection: str = "tracegraph_chunks_contextual"
     qdrant_hybrid_collection: str = "tracegraph_chunks_hybrid"
 
+    # Neo4j
+    neo4j_uri: str | None = None
+    neo4j_username: str | None = None
+    neo4j_password: str | None = None
+    neo4j_database: str = "neo4j"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
