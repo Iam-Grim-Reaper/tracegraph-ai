@@ -8,6 +8,19 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:3000"
 
+    # Gemini
+    gemini_api_key: str | None = None
+    embedding_model: str = "gemini-embedding-2"
+    embedding_dimensions: int = 768
+
+    
+    generation_model: str = "gemini-3.6-flash"
+
+    # Qdrant
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+    qdrant_collection: str = "tracegraph_chunks"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
