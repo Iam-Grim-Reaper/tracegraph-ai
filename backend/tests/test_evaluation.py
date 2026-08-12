@@ -416,6 +416,121 @@ def test_metrics_detect_facts_citations_and_scope():
     assert metrics["document_scope_leakage_count"] == 0
 
 
+def test_positive_answer_with_expected_name_inside_abstention_is_incorrect():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer=(
+            "The provided evidence does not state who developed "
+            "Grad-CAM, although R. R. Selvaraju appears in a reference."
+        ),
+        verified=True,
+    )
+    assert metrics["answer_correctness"] is False
+
+
+def test_qualified_abstention_with_expected_name_is_incorrect():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer=(
+            "The evidence mentions R. R. Selvaraju, but does not "
+            "explicitly state who developed Grad-CAM."
+        ),
+        verified=True,
+    )
+    assert metrics["answer_correctness"] is False
+
+
+def test_positive_affirmative_answer_is_correct():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer=(
+            "R. R. Selvaraju developed Grad-CAM "
+            "[Graph Evidence 1]."
+        ),
+        verified=True,
+    )
+    assert metrics["answer_correctness"] is True
+
+
+def test_expected_scope_abstention_is_correct():
+    case = make_case()
+    case.negative = True
+    metrics = calculate_metrics(
+        case,
+        make_retrieval(),
+        answer="The available evidence is insufficient.",
+        verified=True,
+    )
+    assert metrics["answer_correctness"] is True
+    assert metrics["abstention_correctness"] is True
+
+
+def test_wrong_affirmative_answer_is_incorrect():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer="John Doe developed Grad-CAM [Graph Evidence 1].",
+        verified=False,
+        unsupported_claims=["John Doe developed Grad-CAM"],
+    )
+    assert metrics["answer_correctness"] is False
+
+
+def test_supported_uncited_answer_is_faithful_but_not_cited():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer="R. R. Selvaraju developed Grad-CAM.",
+        verified=True,
+    )
+    assert metrics["faithfulness"] is True
+    assert metrics["citation_correctness"] == 0.0
+    assert metrics["citation_coverage"] == 0.0
+
+
+def test_cited_unsupported_claim_is_not_faithful():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer="John Doe developed Grad-CAM [Graph Evidence 1].",
+        verified=False,
+        unsupported_claims=["John Doe developed Grad-CAM"],
+    )
+    assert metrics["faithfulness"] is False
+
+
+def test_supported_cited_claim_is_faithful_and_cited():
+    metrics = calculate_metrics(
+        make_case(),
+        make_retrieval(),
+        answer=(
+            "R. R. Selvaraju developed Grad-CAM "
+            "[Graph Evidence 1]."
+        ),
+        verified=True,
+    )
+    assert metrics["faithfulness"] is True
+    assert metrics["citation_correctness"] == 1.0
+    assert metrics["citation_coverage"] == 1.0
+
+
+def test_verified_abstention_needs_no_fabricated_citation():
+    case = make_case()
+    case.negative = True
+    metrics = calculate_metrics(
+        case,
+        make_retrieval(),
+        answer="The evidence is insufficient.",
+        verified=True,
+    )
+    assert metrics["faithfulness"] is True
+    assert metrics["citation_correctness"] == 1.0
+    assert metrics["citation_coverage"] == 1.0
+
+
 def test_metrics_detect_scope_leakage():
     retrieval = make_retrieval()
     retrieval.evidence.append(

@@ -14,6 +14,9 @@ ABSTENTION_TERMS = (
     "does not contain",
     "no evidence",
     "not enough evidence",
+    "does not state",
+    "does not establish",
+    "does not contain information",
 )
 
 
@@ -30,6 +33,19 @@ def contains_term(
     term: str,
 ) -> bool:
     return normalize(term) in normalize(text)
+
+
+def is_abstention(answer: str) -> bool:
+    normalized = normalize(answer)
+    if any(term in answer.casefold() for term in ABSTENTION_TERMS):
+        return True
+    return bool(
+        re.search(
+            r"\bdoes not\b(?:\s+\w+){0,3}\s+"
+            r"(?:state|establish|identify|mention|contain)\b",
+            normalized,
+        )
+    )
 
 
 def ranked_chunk_metrics(
@@ -234,14 +250,11 @@ def calculate_metrics(
         case.answer_must_contain
         or case.expected_entities
     )
-    abstained = any(
-        term in answer.casefold()
-        for term in ABSTENTION_TERMS
-    )
+    abstained = is_abstention(answer)
     if case.negative:
         answer_correct = abstained
     else:
-        answer_correct = all(
+        answer_correct = not abstained and all(
             contains_term(answer, term)
             for term in expected_terms
         )
@@ -268,7 +281,7 @@ def calculate_metrics(
         {
             "answer_correctness": answer_correct,
             "faithfulness": bool(verified)
-            and citation_correctness == 1.0
+            and unsupported_count == 0
             and not forbidden_hits,
             "citation_correctness": citation_correctness,
             "citation_coverage": citation_coverage,
