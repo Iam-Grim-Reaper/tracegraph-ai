@@ -195,6 +195,25 @@ def calculate_metrics(
     metrics["graph_fact_count"] = len(
         retrieval.relationships
     )
+    if case.multi_hop:
+        completeness_components = [
+            metrics["recall_at_k"],
+            metrics["expected_entity_hit_rate"],
+            metrics["expected_relationship_hit_rate"],
+        ]
+        available_components = [
+            float(value)
+            for value in completeness_components
+            if isinstance(value, (int, float))
+        ]
+        metrics["multi_hop_evidence_completeness"] = (
+            sum(available_components)
+            / len(available_components)
+            if available_components
+            else None
+        )
+    else:
+        metrics["multi_hop_evidence_completeness"] = None
 
     if answer is None:
         metrics.update(

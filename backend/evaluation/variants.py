@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
+from math import sqrt
 from time import perf_counter
-
-from qdrant_client import models
 
 from app.core.config import settings
 from app.graph.graph_query import GraphQueryRetriever
@@ -26,19 +25,19 @@ VARIANT_NAMES = (
 )
 
 
-def _scope_filter(
-    document_ids: list[str],
-) -> models.Filter:
-    return models.Filter(
-        must=[
-            models.FieldCondition(
-                key="document_id",
-                match=models.MatchAny(
-                    any=document_ids
-                ),
-            )
-        ]
-    )
+def cosine_similarity(
+    left: list[float],
+    right: list[float],
+) -> float:
+    if len(left) != len(right):
+        raise ValueError("Vector dimensions must match.")
+    left_norm = sqrt(sum(value * value for value in left))
+    right_norm = sqrt(sum(value * value for value in right))
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+    return sum(
+        a * b for a, b in zip(left, right, strict=True)
+    ) / (left_norm * right_norm)
 
 
 class VariantAdapter(ABC):
@@ -80,20 +79,41 @@ class DenseAdapter(VariantAdapter):
             perf_counter() - embedding_started
         )
         search_started = perf_counter()
-        response = self.store.client.query_points(
-            collection_name=self.store.collection_name,
-            query=vector,
-            query_filter=_scope_filter(document_ids),
-            with_payload=True,
-            limit=self.TOP_K,
-        )
+        points = []
+        offset = None
+        while True:
+            page, offset = self.store.client.scroll(
+                collection_name=self.store.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=True,
+            )
+            points.extend(page)
+            if offset is None:
+                break
+
+        scoped_points = [
+            point
+            for point in points
+            if (point.payload or {}).get("document_id")
+            in set(document_ids)
+        ]
+        ranked_points = sorted(
+            scoped_points,
+            key=lambda point: cosine_similarity(
+                vector,
+                point.vector,
+            ),
+            reverse=True,
+        )[:self.TOP_K]
         search_latency = perf_counter() - search_started
 
         evidence: list[Evidence] = []
         context_parts: list[str] = []
         chunk_ids: list[str] = []
         for index, point in enumerate(
-            response.points,
+            ranked_points,
             start=1,
         ):
             payload = point.payload or {}

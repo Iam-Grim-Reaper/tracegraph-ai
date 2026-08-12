@@ -3,6 +3,7 @@ import json
 import pytest
 
 from evaluation.benchmark import load_benchmark
+from evaluation.analyze import percentile
 from evaluation.metrics import (
     calculate_metrics,
     ranked_chunk_metrics,
@@ -16,6 +17,7 @@ from evaluation.models import (
 )
 from evaluation.reporting import serialize_results
 from evaluation.runner import load_existing_results
+from evaluation.variants import cosine_similarity
 
 
 def make_case() -> BenchmarkCase:
@@ -107,6 +109,24 @@ def test_ranked_chunk_metrics():
     assert metrics["mrr"] == 0.5
 
 
+def test_cosine_similarity_for_dense_local_scope():
+    assert cosine_similarity(
+        [1.0, 0.0],
+        [1.0, 0.0],
+    ) == pytest.approx(1.0)
+    assert cosine_similarity(
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ) == pytest.approx(0.0)
+
+
+def test_percentile_uses_linear_interpolation():
+    assert percentile(
+        [1.0, 2.0, 3.0, 4.0],
+        0.5,
+    ) == pytest.approx(2.5)
+
+
 def test_metrics_detect_facts_citations_and_scope():
     metrics = calculate_metrics(
         case=make_case(),
@@ -142,6 +162,18 @@ def test_metrics_detect_scope_leakage():
 
     assert metrics["out_of_scope_evidence_count"] == 1
     assert metrics["document_scope_leakage_count"] == 1
+
+
+def test_multi_hop_evidence_completeness():
+    case = make_case()
+    case.multi_hop = True
+
+    metrics = calculate_metrics(
+        case,
+        make_retrieval(),
+    )
+
+    assert metrics["multi_hop_evidence_completeness"] == 1.0
 
 
 def test_result_serialization(tmp_path):
