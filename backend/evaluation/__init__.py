@@ -1,1 +1,0 @@
-"""TraceGraph deterministic evaluation harness."""

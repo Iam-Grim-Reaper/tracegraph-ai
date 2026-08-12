@@ -1,0 +1,48 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv/
+venv/
+.cache/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Development, tests, and archived evaluation
+tests/
+tools/
+data/
+evaluation/
+test_*.py
+compare_*.py
+inspect_*.py
+verify_*.py
+index_*.py
+build_*.py
+
+# Generated/runtime material
+uploads/
+results/
+coverage/
+htmlcov/
+*.log
+*.jsonl
+*.csv
+*.db
+*.sqlite*
+*.dump
+*.zip
+
+# Repository and editor metadata
+.git/
+.gitignore
+.github/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
