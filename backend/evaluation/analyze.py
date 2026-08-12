@@ -13,7 +13,7 @@ from evaluation.reporting import serialize_results
 from evaluation.runner import load_existing_results
 
 
-SECTION_MARKER = "## FULL RETRIEVAL BENCHMARK"
+SECTION_MARKER = "## Historical Coverage Benchmark"
 
 
 def percentile(
@@ -88,7 +88,7 @@ def build_full_retrieval_section(results) -> str:
     lines = [
         SECTION_MARKER,
         "",
-        "This section summarizes the complete 15-case, four-variant retrieval-only run (60 runs). Answer-generation metrics are intentionally not included.",
+        "This benchmark reflects the indexes as they existed during development and therefore includes index-coverage differences between retrieval variants. It must not be interpreted as a controlled comparison of retrieval architectures. The section summarizes the complete 15-case, four-variant retrieval-only run (60 runs); answer-generation metrics are intentionally not included.",
         "",
         "### Overall comparison",
         "",

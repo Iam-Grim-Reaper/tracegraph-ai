@@ -61,10 +61,16 @@ class DenseAdapter(VariantAdapter):
     name = "dense"
     TOP_K = 5
 
-    def __init__(self):
+    def __init__(
+        self,
+        collection_name: str | None = None,
+    ):
         self.embedding = GeminiEmbeddingService()
         self.store = QdrantVectorStore(
-            collection_name=settings.qdrant_collection
+            collection_name=(
+                collection_name
+                or settings.qdrant_collection
+            )
         )
 
     def retrieve(
@@ -162,9 +168,14 @@ class HybridAdapter(VariantAdapter):
     RRF_LIMIT = 15
     TOP_K = 5
 
-    def __init__(self):
+    def __init__(
+        self,
+        collection_name: str | None = None,
+    ):
         self.embedding = GeminiEmbeddingService()
-        self.store = HybridStore()
+        self.store = HybridStore(
+            collection_name=collection_name
+        )
         self.reranker = CrossEncoderReranker()
 
     def retrieve(
@@ -337,10 +348,19 @@ class FusedAdapter(VariantAdapter):
     GRAPH_MAX_FACTS = 20
     MAX_FUSED_CANDIDATES = 25
 
-    def __init__(self):
+    def __init__(
+        self,
+        hybrid_collection_name: str | None = None,
+    ):
         self.store = Neo4jGraphStore()
         self.store.verify_connectivity()
-        self.retriever = GraphHybridRetriever(self.store)
+        hybrid_store = HybridStore(
+            collection_name=hybrid_collection_name
+        )
+        self.retriever = GraphHybridRetriever(
+            self.store,
+            hybrid_store=hybrid_store,
+        )
 
     def close(self) -> None:
         self.store.close()

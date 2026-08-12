@@ -79,6 +79,7 @@ class GraphHybridRetriever:
     def __init__(
         self,
         graph_store: Neo4jGraphStore,
+        hybrid_store: HybridStore | None = None,
     ):
         self.graph_store = (
             graph_store
@@ -89,7 +90,8 @@ class GraphHybridRetriever:
         )
 
         self.hybrid_store = (
-            HybridStore()
+            hybrid_store
+            or HybridStore()
         )
 
         self.graph_retriever = (

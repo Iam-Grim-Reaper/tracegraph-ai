@@ -19,9 +19,9 @@
 |---|---|---|---:|---:|---:|---:|---:|
 | research_gradcam_developer | research_graph | graph | True | True | 1.0 | 0 | 3.605s |
 
-## FULL RETRIEVAL BENCHMARK
+## Historical Coverage Benchmark
 
-This section summarizes the complete 15-case, four-variant retrieval-only run (60 runs). Answer-generation metrics are intentionally not included.
+This benchmark reflects the indexes as they existed during development and therefore includes index-coverage differences between retrieval variants. It must not be interpreted as a controlled comparison of retrieval architectures. The section summarizes the complete 15-case, four-variant retrieval-only run (60 runs); answer-generation metrics are intentionally not included.
 
 ### Overall comparison
 
@@ -72,3 +72,7 @@ This section summarizes the complete 15-case, four-variant retrieval-only run (6
 | scope_isolation | fused | N/A | N/A | N/A | N/A | N/A | N/A | N/A | 0 | 0 | 1 | 0.844s | 0.844s | 0.941s |
 | scope_isolation | graph | N/A | N/A | N/A | N/A | N/A | N/A | N/A | 0 | 0 | 2 | 0.174s | 0.174s | 0.207s |
 | scope_isolation | hybrid | N/A | N/A | N/A | N/A | N/A | N/A | N/A | 0 | 0 | 1 | 0.699s | 0.699s | 0.741s |
+
+## Controlled Matched-Corpus Benchmark
+
+Not yet executed. This future benchmark will compare dense, hybrid, graph, and fused retrieval over the same five-document, 35-chunk corpus using isolated evaluation-only Qdrant collections. No controlled metrics are reported until the evaluation indexes are approved, built, and measured.

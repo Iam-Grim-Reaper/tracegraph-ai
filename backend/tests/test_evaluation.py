@@ -1,4 +1,7 @@
 import json
+import inspect
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +21,10 @@ from evaluation.models import (
 from evaluation.reporting import serialize_results
 from evaluation.runner import load_existing_results
 from evaluation.variants import cosine_similarity
+from evaluation import controlled
+from app.core.config import settings
+from app.retrieval.graph_hybrid_retriever import GraphHybridRetriever
+from app.retrieval.hybrid_store import HybridStore
 
 
 def make_case() -> BenchmarkCase:
@@ -125,6 +132,131 @@ def test_percentile_uses_linear_interpolation():
         [1.0, 2.0, 3.0, 4.0],
         0.5,
     ) == pytest.approx(2.5)
+
+
+def test_evaluation_collection_names_are_isolated():
+    assert controlled.EVAL_DENSE_COLLECTION not in (
+        controlled.production_collection_names()
+    )
+    assert controlled.EVAL_HYBRID_COLLECTION not in (
+        controlled.production_collection_names()
+    )
+    with pytest.raises(ValueError, match="production"):
+        controlled.assert_evaluation_collection(
+            settings.qdrant_hybrid_collection
+        )
+
+
+def test_controlled_adapter_factories_use_eval_collections(
+    monkeypatch,
+):
+    calls = {}
+
+    class FakeDense:
+        def __init__(self, collection_name):
+            calls["dense"] = collection_name
+
+    class FakeHybrid:
+        def __init__(self, collection_name):
+            calls["hybrid"] = collection_name
+
+    class FakeFused:
+        def __init__(self, hybrid_collection_name):
+            calls["fused"] = hybrid_collection_name
+
+    monkeypatch.setattr(controlled, "DenseAdapter", FakeDense)
+    monkeypatch.setattr(controlled, "HybridAdapter", FakeHybrid)
+    monkeypatch.setattr(controlled, "FusedAdapter", FakeFused)
+
+    controlled.create_controlled_dense_adapter()
+    controlled.create_controlled_hybrid_adapter()
+    controlled.create_controlled_fused_adapter()
+
+    assert calls == {
+        "dense": controlled.EVAL_DENSE_COLLECTION,
+        "hybrid": controlled.EVAL_HYBRID_COLLECTION,
+        "fused": controlled.EVAL_HYBRID_COLLECTION,
+    }
+
+
+def test_production_defaults_remain_optional():
+    hybrid_default = inspect.signature(
+        HybridStore.__init__
+    ).parameters["collection_name"].default
+    fused_default = inspect.signature(
+        GraphHybridRetriever.__init__
+    ).parameters["hybrid_store"].default
+
+    assert hybrid_default is None
+    assert fused_default is None
+
+
+def test_controlled_corpus_preserves_stable_ids():
+    corpus = controlled.load_controlled_corpus(
+        paths=(
+            Path("../data/career_fixture.txt"),
+        )
+    )
+
+    assert str(corpus[0].document.id) == (
+        "04685d93-3225-52a4-a22d-b9adfc05a058"
+    )
+    assert str(corpus[0].chunks[0].id) == (
+        "d8b5ecda-f60d-5dad-b6d5-141253d48b61"
+    )
+
+
+def test_controlled_plan_preserves_all_chunks():
+    corpus = controlled.load_controlled_corpus(
+        paths=(
+            Path("../data/career_fixture.txt"),
+            Path("../data/policy_fixture.txt"),
+        )
+    )
+    plan = controlled.build_controlled_index_plan(corpus)
+
+    assert plan.document_count == 2
+    assert plan.chunk_count == 2
+    assert plan.dense_embeddings_required == 2
+    assert plan.dense_qdrant_writes == 2
+    assert plan.hybrid_qdrant_writes == 2
+    assert plan.dense_embedding_api_calls == 2
+    assert plan.hybrid_embedding_api_calls == 2
+    assert plan.hybrid_contextualization_api_calls == 2
+
+
+def test_dense_and_hybrid_representations_are_distinct():
+    chunk = SimpleNamespace(
+        text="Original chunk text",
+        contextual_text=(
+            "Document context\n\nOriginal chunk text"
+        ),
+    )
+
+    assert controlled.dense_representation(chunk) == (
+        "Original chunk text"
+    )
+    assert controlled.hybrid_representation(chunk).startswith(
+        "Document context"
+    )
+
+
+def test_hybrid_representation_requires_context():
+    chunk = SimpleNamespace(
+        text="Original",
+        contextual_text=None,
+    )
+    with pytest.raises(ValueError, match="contextualized"):
+        controlled.hybrid_representation(chunk)
+
+
+def test_controlled_variants_share_document_scope_values():
+    document_ids = ["doc-a", "doc-b"]
+    normalized = HybridStore._normalize_document_ids(
+        document_ids
+    )
+
+    assert normalized == document_ids
 
 
 def test_metrics_detect_facts_citations_and_scope():

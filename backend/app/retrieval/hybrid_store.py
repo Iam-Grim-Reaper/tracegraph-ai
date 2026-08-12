@@ -18,6 +18,7 @@ class HybridStore:
 
     def __init__(
         self,
+        collection_name: str | None = None,
     ):
         if not settings.qdrant_url:
             raise ValueError(
@@ -35,7 +36,8 @@ class HybridStore:
         )
 
         self.collection_name = (
-            settings.qdrant_hybrid_collection
+            collection_name
+            or settings.qdrant_hybrid_collection
         )
 
         self.vector_size = (
