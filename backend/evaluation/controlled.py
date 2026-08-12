@@ -15,7 +15,9 @@ from app.retrieval.vector_store import QdrantVectorStore
 from evaluation.variants import (
     DenseAdapter,
     FusedAdapter,
+    GraphAdapter,
     HybridAdapter,
+    VariantAdapter,
 )
 
 
@@ -243,3 +245,18 @@ def create_controlled_fused_adapter() -> FusedAdapter:
     return FusedAdapter(
         hybrid_collection_name=EVAL_HYBRID_COLLECTION
     )
+
+
+def create_controlled_adapter(name: str) -> VariantAdapter:
+    factories = {
+        "dense": create_controlled_dense_adapter,
+        "hybrid": create_controlled_hybrid_adapter,
+        "graph": GraphAdapter,
+        "fused": create_controlled_fused_adapter,
+    }
+    try:
+        return factories[name]()
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown controlled evaluation variant: {name}"
+        ) from exc

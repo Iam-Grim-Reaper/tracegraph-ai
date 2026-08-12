@@ -19,7 +19,7 @@ from evaluation.models import (
     RetrievalResult,
 )
 from evaluation.reporting import serialize_results
-from evaluation.runner import load_existing_results
+from evaluation.runner import EvaluationRunner, load_existing_results
 from evaluation.variants import cosine_similarity
 from evaluation import controlled
 from app.core.config import settings
@@ -177,6 +177,83 @@ def test_controlled_adapter_factories_use_eval_collections(
         "hybrid": controlled.EVAL_HYBRID_COLLECTION,
         "fused": controlled.EVAL_HYBRID_COLLECTION,
     }
+
+
+def test_controlled_runner_selects_controlled_factories(monkeypatch):
+    calls = []
+
+    class FakeAdapter:
+        def close(self):
+            return None
+
+    def factory(name):
+        calls.append(name)
+        return FakeAdapter()
+
+    runner = EvaluationRunner(
+        retrieval_only=True,
+        adapter_factory=factory,
+    )
+    for variant in ("dense", "hybrid", "graph", "fused"):
+        assert runner._adapter(variant) is runner._adapter(variant)
+    assert calls == ["dense", "hybrid", "graph", "fused"]
+
+
+def test_controlled_factory_keeps_graph_neo4j_based(monkeypatch):
+    marker = object()
+    monkeypatch.setattr(controlled, "GraphAdapter", lambda: marker)
+    assert controlled.create_controlled_adapter("graph") is marker
+
+
+def test_normal_runner_uses_production_factory(monkeypatch):
+    marker = object()
+    monkeypatch.setattr(
+        "evaluation.runner.create_adapter",
+        lambda name: marker,
+    )
+    runner = EvaluationRunner(retrieval_only=True)
+    assert runner._adapter("dense") is marker
+
+
+def test_runner_preserves_document_ids():
+    observed = []
+
+    class FakeAdapter:
+        def retrieve(self, question, document_ids):
+            observed.extend(document_ids)
+            return RetrievalResult(
+                variant="dense",
+                context="",
+                evidence=[],
+                chunk_ids=[],
+                entities=[],
+                relationships=[],
+                retrieval_latency_seconds=0.0,
+                limits={},
+            )
+
+        def close(self):
+            return None
+
+    case = make_case()
+    runner = EvaluationRunner(
+        retrieval_only=True,
+        adapter_factory=lambda name: FakeAdapter(),
+    )
+    runner.run_case(case, "dense")
+    assert observed == case.document_ids
+
+
+def test_controlled_factory_cannot_accept_collection_override():
+    signature = inspect.signature(
+        controlled.create_controlled_adapter
+    )
+    assert list(signature.parameters) == ["name"]
+    with pytest.raises(TypeError):
+        controlled.create_controlled_adapter(
+            "dense",
+            collection_name=settings.qdrant_collection,
+        )
 
 
 def test_production_defaults_remain_optional():

@@ -15,7 +15,12 @@ from evaluation.runner import (
     EvaluationRunner,
     load_existing_results,
 )
-from evaluation.variants import VARIANT_NAMES
+from evaluation.controlled import (
+    EVAL_DENSE_COLLECTION,
+    EVAL_HYBRID_COLLECTION,
+    create_controlled_adapter,
+)
+from evaluation.variants import VARIANT_NAMES, create_adapter
 
 
 EVALUATION_DIR = Path(__file__).parent
@@ -62,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--retrieval-only", action="store_true")
+    parser.add_argument(
+        "--controlled",
+        action="store_true",
+        help="Use isolated matched-corpus evaluation collections.",
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
         "--output",
@@ -104,6 +114,13 @@ def main() -> None:
     print("Estimated embedding calls:", embedding_calls)
     print("Estimated generation/verification calls:", generation_calls)
     print("Token usage available: false")
+    if args.controlled:
+        print("Retrieval mode: controlled matched corpus")
+        print("Dense collection:", EVAL_DENSE_COLLECTION)
+        print("Hybrid collection:", EVAL_HYBRID_COLLECTION)
+        print("Graph: existing Neo4j (read-only retrieval)")
+    else:
+        print("Retrieval mode: production defaults")
     if args.dry_run:
         for case in cases:
             print(f"- {case.id}: {case.question}")
@@ -121,7 +138,12 @@ def main() -> None:
     }
     results = list(existing_results)
     runner = EvaluationRunner(
-        retrieval_only=args.retrieval_only
+        retrieval_only=args.retrieval_only,
+        adapter_factory=(
+            create_controlled_adapter
+            if args.controlled
+            else create_adapter
+        ),
     )
     try:
         for case in cases:
@@ -141,6 +163,7 @@ def main() -> None:
         "benchmark": str(args.benchmark),
         "variants": variants,
         "retrieval_only": args.retrieval_only,
+        "controlled": args.controlled,
         "token_usage_available": False,
         "cost_computed": False,
         "retrieval_limits": {

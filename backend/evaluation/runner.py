@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
@@ -22,9 +23,13 @@ class EvaluationRunner:
     def __init__(
         self,
         retrieval_only: bool = False,
+        adapter_factory: Callable[
+            [str], VariantAdapter
+        ] | None = None,
     ):
         self.retrieval_only = retrieval_only
         self.adapters: dict[str, VariantAdapter] = {}
+        self.adapter_factory = adapter_factory or create_adapter
         self._research_agent = None
         self._verification_agent = None
 
@@ -34,7 +39,7 @@ class EvaluationRunner:
 
     def _adapter(self, variant: str) -> VariantAdapter:
         if variant not in self.adapters:
-            self.adapters[variant] = create_adapter(variant)
+            self.adapters[variant] = self.adapter_factory(variant)
         return self.adapters[variant]
 
     def _agents(self):

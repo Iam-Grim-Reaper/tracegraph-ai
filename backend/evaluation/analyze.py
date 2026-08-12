@@ -13,7 +13,8 @@ from evaluation.reporting import serialize_results
 from evaluation.runner import load_existing_results
 
 
-SECTION_MARKER = "## Historical Coverage Benchmark"
+HISTORICAL_SECTION_MARKER = "## Historical Coverage Benchmark"
+CONTROLLED_SECTION_MARKER = "## Controlled Matched-Corpus Benchmark"
 
 
 def percentile(
@@ -68,6 +69,10 @@ def summary_row(name, results):
             int(item.metrics["out_of_scope_evidence_count"])
             for item in results
         ),
+        "forbidden": sum(
+            int(item.metrics.get("forbidden_relationship_count", 0))
+            for item in results
+        ),
         "average_latency": mean(latencies),
         "median_latency": median(latencies),
         "p95_latency": percentile(latencies, 0.95),
@@ -78,35 +83,58 @@ def summary_row(name, results):
     }
 
 
-def build_full_retrieval_section(results) -> str:
+def build_full_retrieval_section(
+    results,
+    controlled: bool = False,
+) -> str:
     by_variant = defaultdict(list)
     by_category_variant = defaultdict(list)
     for item in results:
         by_variant[item.variant].append(item)
         by_category_variant[(item.category, item.variant)].append(item)
 
+    marker = (
+        CONTROLLED_SECTION_MARKER
+        if controlled
+        else HISTORICAL_SECTION_MARKER
+    )
+    description = (
+        "This is the fair architecture comparison: Dense and Hybrid both "
+        "contain all 35 stable chunks from the same five-document corpus; "
+        "all variants receive identical document scope; Graph uses the same "
+        "document-provenance scope; and Fused combines the controlled Hybrid "
+        "index with that graph. This is a 15-case, four-variant retrieval-only "
+        "run (60 runs)."
+        if controlled
+        else "This benchmark reflects the indexes as they existed during "
+        "development and therefore includes index-coverage differences "
+        "between retrieval variants. It must not be interpreted as a "
+        "controlled comparison of retrieval architectures. The section "
+        "summarizes the complete 15-case, four-variant retrieval-only run "
+        "(60 runs); answer-generation metrics are intentionally not included."
+    )
     lines = [
-        SECTION_MARKER,
+        marker,
         "",
-        "This benchmark reflects the indexes as they existed during development and therefore includes index-coverage differences between retrieval variants. It must not be interpreted as a controlled comparison of retrieval architectures. The section summarizes the complete 15-case, four-variant retrieval-only run (60 runs); answer-generation metrics are intentionally not included.",
+        description,
         "",
         "### Overall comparison",
         "",
-        "| Variant | Recall@K | Precision@K | Hit@K | MRR | Entity Hit | Relationship Hit | Multi-hop Completeness | Scope Leaks | Out-of-scope | Empty | Avg Latency | Median | P95 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Variant | Recall@K | Precision@K | Hit@K | MRR | Entity Hit | Relationship Hit | Multi-hop Completeness | Forbidden | Scope Leaks | Out-of-scope | Empty | Avg Latency | Median | P95 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for variant in ("dense", "hybrid", "graph", "fused"):
         row = summary_row(variant, by_variant[variant])
         lines.append(
-            f"| {variant} | {format_metric(row['recall'])} | {format_metric(row['precision'])} | {format_metric(row['hit'])} | {format_metric(row['mrr'])} | {format_metric(row['entity'])} | {format_metric(row['relationship'])} | {format_metric(row['multi_hop'])} | {row['scope_leaks']} | {row['out_of_scope']} | {row['empty_results']} | {row['average_latency']:.3f}s | {row['median_latency']:.3f}s | {row['p95_latency']:.3f}s |"
+            f"| {variant} | {format_metric(row['recall'])} | {format_metric(row['precision'])} | {format_metric(row['hit'])} | {format_metric(row['mrr'])} | {format_metric(row['entity'])} | {format_metric(row['relationship'])} | {format_metric(row['multi_hop'])} | {row['forbidden']} | {row['scope_leaks']} | {row['out_of_scope']} | {row['empty_results']} | {row['average_latency']:.3f}s | {row['median_latency']:.3f}s | {row['p95_latency']:.3f}s |"
         )
 
     lines.extend([
         "",
         "### Results by category",
         "",
-        "| Category | Variant | Recall@K | Precision@K | Hit@K | MRR | Entity Hit | Relationship Hit | Multi-hop Completeness | Scope Leaks | Out-of-scope | Empty | Avg Latency | Median | P95 |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Category | Variant | Recall@K | Precision@K | Hit@K | MRR | Entity Hit | Relationship Hit | Multi-hop Completeness | Forbidden | Scope Leaks | Out-of-scope | Empty | Avg Latency | Median | P95 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ])
     for category, variant in sorted(by_category_variant):
         row = summary_row(
@@ -114,7 +142,7 @@ def build_full_retrieval_section(results) -> str:
             by_category_variant[(category, variant)],
         )
         lines.append(
-            f"| {category} | {variant} | {format_metric(row['recall'])} | {format_metric(row['precision'])} | {format_metric(row['hit'])} | {format_metric(row['mrr'])} | {format_metric(row['entity'])} | {format_metric(row['relationship'])} | {format_metric(row['multi_hop'])} | {row['scope_leaks']} | {row['out_of_scope']} | {row['empty_results']} | {row['average_latency']:.3f}s | {row['median_latency']:.3f}s | {row['p95_latency']:.3f}s |"
+            f"| {category} | {variant} | {format_metric(row['recall'])} | {format_metric(row['precision'])} | {format_metric(row['hit'])} | {format_metric(row['mrr'])} | {format_metric(row['entity'])} | {format_metric(row['relationship'])} | {format_metric(row['multi_hop'])} | {row['forbidden']} | {row['scope_leaks']} | {row['out_of_scope']} | {row['empty_results']} | {row['average_latency']:.3f}s | {row['median_latency']:.3f}s | {row['p95_latency']:.3f}s |"
         )
     return "\n".join(lines) + "\n"
 
@@ -125,6 +153,7 @@ def main() -> None:
     parser.add_argument("--csv-output", required=True)
     parser.add_argument("--benchmark", default=str(DEFAULT_BENCHMARK_PATH))
     parser.add_argument("--report", required=True)
+    parser.add_argument("--controlled", action="store_true")
     args = parser.parse_args()
 
     payload = json.loads(
@@ -153,11 +182,28 @@ def main() -> None:
         if report_path.exists()
         else "# TraceGraph Evaluation Report\n"
     )
-    prefix = existing.split(SECTION_MARKER, 1)[0].rstrip()
-    report_path.write_text(
-        prefix + "\n\n" + build_full_retrieval_section(results),
-        encoding="utf-8",
+    section = build_full_retrieval_section(
+        results,
+        controlled=args.controlled,
     )
+    marker = (
+        CONTROLLED_SECTION_MARKER
+        if args.controlled
+        else HISTORICAL_SECTION_MARKER
+    )
+    prefix, separator, suffix = existing.partition(marker)
+    if separator and args.controlled:
+        updated = prefix.rstrip() + "\n\n" + section
+    elif separator:
+        controlled_tail = ""
+        if CONTROLLED_SECTION_MARKER in suffix:
+            controlled_tail = "\n\n" + CONTROLLED_SECTION_MARKER + suffix.split(
+                CONTROLLED_SECTION_MARKER, 1
+            )[1]
+        updated = prefix.rstrip() + "\n\n" + section + controlled_tail
+    else:
+        updated = existing.rstrip() + "\n\n" + section
+    report_path.write_text(updated, encoding="utf-8")
 
 
 if __name__ == "__main__":
