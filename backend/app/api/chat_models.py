@@ -14,6 +14,21 @@ class ChatRequest(BaseModel):
         ),
     )
 
+    document_ids: (
+        list[str] | None
+    ) = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+        description=(
+            "Optional document IDs that "
+            "restrict retrieval to the "
+            "selected documents. "
+            "If omitted, all indexed "
+            "documents are searched."
+        ),
+    )
+
 
 class ChatResponse(BaseModel):
     answer: str
@@ -37,3 +52,7 @@ class ChatResponse(BaseModel):
     graph_fact_count: int
 
     used_evidence_labels: list[str]
+
+    document_ids: (
+        list[str] | None
+    ) = None

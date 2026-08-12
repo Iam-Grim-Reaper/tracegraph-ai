@@ -55,6 +55,17 @@ class TraceGraphState(
     rewritten_question: str | None
 
     # ---------------------------------
+    # Retrieval scope
+    #
+    # None:
+    #     all indexed documents
+    #
+    # list[str]:
+    #     selected documents only
+    # ---------------------------------
+    document_ids: list[str] | None
+
+    # ---------------------------------
     # Final output
     # ---------------------------------
     final_answer: str

@@ -1,4 +1,3 @@
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Annotated
@@ -43,7 +42,8 @@ SUPPORTED_EXTENSIONS = {
 
 # Development safeguard.
 #
-# We can later move this into settings.
+# This can move into settings when
+# deployment configuration is finalized.
 MAX_UPLOAD_BYTES = (
     25 * 1024 * 1024
 )
@@ -57,21 +57,30 @@ def _validate_filename(
             status_code=(
                 status.HTTP_400_BAD_REQUEST
             ),
+
             detail=(
                 "Uploaded file must "
                 "have a filename."
             ),
         )
 
-    # Remove any path supplied by
-    # the client.
-    safe_name = Path(
-        filename
-    ).name
+    # -----------------------------------------
+    # Remove any client-supplied path.
+    # -----------------------------------------
 
-    suffix = Path(
-        safe_name
-    ).suffix.lower()
+    safe_name = (
+        Path(
+            filename
+        ).name
+    )
+
+    suffix = (
+        Path(
+            safe_name
+        )
+        .suffix
+        .lower()
+    )
 
     if (
         suffix
@@ -87,6 +96,7 @@ def _validate_filename(
             status_code=(
                 status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
             ),
+
             detail=(
                 "Unsupported document type. "
                 f"Supported extensions: "
@@ -105,10 +115,11 @@ def _save_upload(
     destination: Path,
 ) -> int:
     """
-    Stream the uploaded file to disk while
-    enforcing a development upload limit.
+    Stream the uploaded file to temporary
+    storage while enforcing the development
+    upload-size limit.
 
-    Returns the number of bytes written.
+    Returns the total bytes written.
     """
 
     total_bytes = 0
@@ -130,8 +141,10 @@ def _save_upload(
             if not data:
                 break
 
-            total_bytes += len(
-                data
+            total_bytes += (
+                len(
+                    data
+                )
             )
 
             if (
@@ -140,8 +153,10 @@ def _save_upload(
             ):
                 raise HTTPException(
                     status_code=(
-                        status.HTTP_413_CONTENT_TOO_LARGE
+                        status
+                        .HTTP_413_CONTENT_TOO_LARGE
                     ),
+
                     detail=(
                         "Uploaded document exceeds "
                         "the 25 MB development "
@@ -158,12 +173,18 @@ def _save_upload(
             status_code=(
                 status.HTTP_400_BAD_REQUEST
             ),
+
             detail=(
                 "Uploaded file is empty."
             ),
         )
 
     return total_bytes
+
+
+# =========================================================
+# POST /api/documents
+# =========================================================
 
 
 @router.post(
@@ -178,6 +199,7 @@ def _save_upload(
 def upload_document(
     file: Annotated[
         UploadFile,
+
         File(
             description=(
                 "PDF, TXT, or Markdown "
@@ -193,11 +215,14 @@ def upload_document(
     )
 
     try:
-        # Each request gets an isolated
+        # -----------------------------------------
+        # Every request receives an isolated
         # temporary directory.
         #
-        # The directory disappears after
-        # indexing finishes.
+        # It is removed automatically after
+        # indexing completes.
+        # -----------------------------------------
+
         with tempfile.TemporaryDirectory(
             prefix=(
                 "tracegraph-upload-"
@@ -230,36 +255,91 @@ def upload_document(
                 document_id=(
                     result.document_id
                 ),
+
                 filename=(
                     result.filename
                 ),
+
                 file_type=(
                     result.file_type
                 ),
-                title=result.title,
+
+                title=(
+                    result.title
+                ),
+
+                # =================================
+                # Ontology metadata
+                # =================================
+
+                ontology_profile=(
+                    result
+                    .ontology_profile
+                ),
+
+                ontology_version=(
+                    result
+                    .ontology_version
+                ),
+
+                ontology_profiles=(
+                    result
+                    .ontology_profiles
+                ),
+
+                ontology_confidence=(
+                    result
+                    .ontology_confidence
+                ),
+
+                ontology_method=(
+                    result
+                    .ontology_method
+                ),
+
+                ontology_reason=(
+                    result
+                    .ontology_reason
+                ),
+
+                ontology_scores=(
+                    result
+                    .ontology_scores
+                ),
+
+                # =================================
+                # Graph/index statistics
+                # =================================
+
                 chunk_count=(
                     result.chunk_count
                 ),
+
                 entity_count=(
                     result
                     .graph_entity_count
                 ),
+
                 graph_relationship_count=(
                     result
                     .graph_relationship_count
                 ),
+
                 qdrant_indexed_chunks=(
                     result
                     .qdrant_indexed_chunks
                 ),
+
                 graph_rejected_relationship_count=(
                     result
                     .graph_rejected_relationship_count
                 ),
+
                 graph_cached_chunks=(
                     result
                     .graph_cached_chunks
                 ),
+
                 graph_extracted_chunks=(
                     result
                     .graph_extracted_chunks
@@ -275,6 +355,7 @@ def upload_document(
             status_code=(
                 status.HTTP_400_BAD_REQUEST
             ),
+
             detail=str(
                 exc
             ),
@@ -288,8 +369,10 @@ def upload_document(
         ) == 429:
             raise HTTPException(
                 status_code=(
-                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    status
+                    .HTTP_503_SERVICE_UNAVAILABLE
                 ),
+
                 detail=(
                     "The AI provider is "
                     "temporarily rate limited "
@@ -301,6 +384,7 @@ def upload_document(
             status_code=(
                 status.HTTP_502_BAD_GATEWAY
             ),
+
             detail=(
                 "The AI provider returned "
                 "an error during document "
@@ -318,13 +402,20 @@ def upload_document(
 
         raise HTTPException(
             status_code=(
-                status.HTTP_500_INTERNAL_SERVER_ERROR
+                status
+                .HTTP_500_INTERNAL_SERVER_ERROR
             ),
+
             detail=(
                 "TraceGraph could not "
                 "index the document."
             ),
         ) from exc
+
+
+# =========================================================
+# GET /api/documents
+# =========================================================
 
 
 @router.get(
@@ -343,12 +434,22 @@ def list_documents(
         service.list_documents()
     )
 
-    return DocumentListResponse(
-        documents=documents,
-        total=len(
-            documents
-        ),
+    return (
+        DocumentListResponse(
+            documents=(
+                documents
+            ),
+
+            total=len(
+                documents
+            ),
+        )
     )
+
+
+# =========================================================
+# GET /api/documents/{document_id}
+# =========================================================
 
 
 @router.get(
@@ -375,6 +476,7 @@ def get_document(
             status_code=(
                 status.HTTP_404_NOT_FOUND
             ),
+
             detail=(
                 "Document not found."
             ),

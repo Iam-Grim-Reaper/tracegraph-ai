@@ -23,10 +23,10 @@ from app.retrieval.reranker import (
 
 class RetrievalNodes:
     """
-    Executes the retrieval strategy selected
+    Execute the retrieval strategy selected
     by the Retrieval Router.
 
-    The three supported paths are:
+    Supported paths:
 
     hybrid
         Contextual dense + BM25 + RRF
@@ -39,9 +39,14 @@ class RetrievalNodes:
         Qdrant hybrid retrieval + Neo4j graph
         retrieval + stable-ID fusion
         + cross-encoder reranking.
+
+    All paths optionally respect document_ids
+    supplied in TraceGraphState.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         self.embedding_service = (
             GeminiEmbeddingService()
         )
@@ -62,13 +67,13 @@ class RetrievalNodes:
             )
         )
 
-        # Load these lazily.
-        #
-        # CrossEncoder is relatively expensive,
-        # so we do not load every retrieval
-        # component when the workflow starts.
+        # Load rerankers lazily.
         self._hybrid_reranker = None
         self._fused_retriever = None
+
+    # =================================================
+    # HYBRID
+    # =================================================
 
     def hybrid(
         self,
@@ -78,9 +83,19 @@ class RetrievalNodes:
             state
         )
 
+        document_ids = state.get(
+            "document_ids"
+        )
+
         print(
             "Executing HYBRID retrieval..."
         )
+
+        if document_ids:
+            print(
+                "Document scope:",
+                document_ids,
+            )
 
         query_vector = (
             self.embedding_service
@@ -96,17 +111,34 @@ class RetrievalNodes:
                 dense_vector=query_vector,
                 limit=15,
                 candidate_limit=30,
+                document_ids=(
+                    document_ids
+                ),
             )
         )
+
+        # A valid document scope can
+        # legitimately produce no results.
+        if not candidates:
+            return {
+                "research_context": (
+                    "No document-scoped "
+                    "retrieval evidence found."
+                ),
+                "retrieved_chunk_ids": [],
+                "graph_fact_count": 0,
+            }
 
         reranker = (
             self._get_hybrid_reranker()
         )
 
-        reranked = reranker.rerank(
-            query=question,
-            results=candidates,
-            top_k=5,
+        reranked = (
+            reranker.rerank(
+                query=question,
+                results=candidates,
+                top_k=5,
+            )
         )
 
         context_parts = []
@@ -174,6 +206,10 @@ class RetrievalNodes:
             "graph_fact_count": 0,
         }
 
+    # =================================================
+    # GRAPH
+    # =================================================
+
     def graph(
         self,
         state: TraceGraphState,
@@ -182,9 +218,19 @@ class RetrievalNodes:
             state
         )
 
+        document_ids = state.get(
+            "document_ids"
+        )
+
         print(
             "Executing GRAPH retrieval..."
         )
+
+        if document_ids:
+            print(
+                "Document scope:",
+                document_ids,
+            )
 
         result = (
             self.graph_retriever
@@ -192,6 +238,9 @@ class RetrievalNodes:
                 query=question,
                 max_seed_entities=5,
                 max_facts=20,
+                document_ids=(
+                    document_ids
+                ),
             )
         )
 
@@ -206,7 +255,8 @@ class RetrievalNodes:
         chunk_ids = list(
             dict.fromkeys(
                 fact.source_chunk_id
-                for fact in result.facts
+                for fact
+                in result.facts
                 if fact.source_chunk_id
             )
         )
@@ -221,6 +271,10 @@ class RetrievalNodes:
             ),
         }
 
+    # =================================================
+    # FUSED
+    # =================================================
+
     def fused(
         self,
         state: TraceGraphState,
@@ -229,9 +283,19 @@ class RetrievalNodes:
             state
         )
 
+        document_ids = state.get(
+            "document_ids"
+        )
+
         print(
             "Executing FUSED retrieval..."
         )
+
+        if document_ids:
+            print(
+                "Document scope:",
+                document_ids,
+            )
 
         retriever = (
             self._get_fused_retriever()
@@ -245,6 +309,9 @@ class RetrievalNodes:
             graph_max_seed_entities=5,
             graph_max_facts=30,
             max_fused_candidates=25,
+            document_ids=(
+                document_ids
+            ),
         )
 
         context_parts = []
@@ -253,6 +320,7 @@ class RetrievalNodes:
         # -----------------------------------------
         # 1. Top reranked textual evidence
         # -----------------------------------------
+
         for index, chunk in enumerate(
             result.chunks,
             start=1,
@@ -293,22 +361,18 @@ class RetrievalNodes:
             )
 
         # -----------------------------------------
-        # 2. Add graph facts independently.
+        # 2. Preserve graph evidence independently
         #
-        # Important:
-        # A useful graph relationship may come
-        # from a provenance chunk that did not
-        # survive the final top-k text reranking.
-        #
-        # We still want the Research Agent to
-        # receive that structured graph evidence.
+        # A graph fact must not disappear merely
+        # because its provenance chunk did not
+        # survive text reranking.
         # -----------------------------------------
+
         seen_graph_facts = set()
 
-        for index, fact in enumerate(
-            result.graph_facts,
-            start=1,
-        ):
+        graph_evidence_index = 1
+
+        for fact in result.graph_facts:
             fact_key = (
                 fact.source_entity_id,
                 fact.relationship_type,
@@ -316,7 +380,10 @@ class RetrievalNodes:
                 fact.source_chunk_id,
             )
 
-            if fact_key in seen_graph_facts:
+            if (
+                fact_key
+                in seen_graph_facts
+            ):
                 continue
 
             seen_graph_facts.add(
@@ -338,7 +405,8 @@ class RetrievalNodes:
 
             context_parts.append(
                 (
-                    f"[Graph Evidence {index}]\n"
+                    f"[Graph Evidence "
+                    f"{graph_evidence_index}]\n"
                     f"{fact.source_name} "
                     f"-[{fact.relationship_type}]-> "
                     f"{fact.target_name}\n"
@@ -346,11 +414,21 @@ class RetrievalNodes:
                     f"{fact.page_number}\n"
                     f"Chunk ID: "
                     f"{fact.source_chunk_id}\n"
+                    f"Document ID: "
+                    f"{fact.source_document_id}\n"
                     f"Confidence: "
                     f"{fact.confidence}\n"
                     f"Evidence: "
                     f"{fact.evidence_text}"
                 )
+            )
+
+            graph_evidence_index += 1
+
+        if not context_parts:
+            context_parts.append(
+                "No document-scoped "
+                "retrieval evidence found."
             )
 
         return {
@@ -366,6 +444,10 @@ class RetrievalNodes:
                 len(result.graph_facts)
             ),
         }
+
+    # =================================================
+    # Lazy dependencies
+    # =================================================
 
     def _get_hybrid_reranker(
         self,
@@ -396,6 +478,10 @@ class RetrievalNodes:
             )
 
         return self._fused_retriever
+
+    # =================================================
+    # State helpers
+    # =================================================
 
     @staticmethod
     def _get_question(

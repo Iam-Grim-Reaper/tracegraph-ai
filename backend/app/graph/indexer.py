@@ -9,6 +9,10 @@ from app.graph.extraction_cache import (
 from app.graph.extractor import (
     GraphExtractor,
 )
+from app.graph.ontology import (
+    OntologyProfile,
+    RESEARCH_ONTOLOGY,
+)
 from app.graph.postprocessor import (
     GraphPostProcessor,
 )
@@ -36,33 +40,57 @@ class GraphIndexStats:
 
 class GraphIndexer:
     """
-    Reusable production graph indexing pipeline.
+    Reusable ontology-aware production
+    graph indexing pipeline.
 
     Pipeline:
 
         chunks
           ↓
-        cache
+        ontology-aware cache
           ↓
-        extraction
+        ontology-aware extraction
           ↓
-        post-processing
+        ontology-aware post-processing
           ↓
         global entity resolution
           ↓
         Neo4j writing
+
+    One ontology profile is used consistently
+    across the complete indexing operation.
     """
 
     def __init__(
         self,
         batch_size: int = 5,
+        ontology_profile: (
+            OntologyProfile | None
+        ) = None,
     ):
         if batch_size < 1:
             raise ValueError(
                 "batch_size must be at least 1"
             )
 
-        self.batch_size = batch_size
+        self.batch_size = (
+            batch_size
+        )
+
+        # -------------------------------------------------
+        # Backward-compatible default.
+        #
+        # Existing TraceGraph development data is
+        # research/technical content.
+        #
+        # Automatic document ontology classification
+        # will replace this default selection later.
+        # -------------------------------------------------
+
+        self.ontology_profile = (
+            ontology_profile
+            or RESEARCH_ONTOLOGY
+        )
 
     def index(
         self,
@@ -75,21 +103,52 @@ class GraphIndexer:
                 "document with no chunks"
             )
 
-        cache = GraphExtractionCache()
+        print(
+            "Active ontology:",
+            self.ontology_profile.name,
+        )
 
-        extracted_graphs = {}
+        print(
+            "Ontology version:",
+            self.ontology_profile.version,
+        )
+
+        # =================================================
+        # CRITICAL ONTOLOGY INVARIANT
+        #
+        # Cache
+        # Extractor
+        # PostProcessor
+        # Validator
+        #
+        # must all operate under the SAME ontology.
+        # =================================================
+
+        cache = (
+            GraphExtractionCache(
+                ontology_profile=(
+                    self.ontology_profile
+                )
+            )
+        )
+
+        extracted_graphs: dict = {}
 
         cached_count = 0
 
-        missing_chunks = []
+        missing_chunks: list[
+            DocumentChunk
+        ] = []
 
-        # ---------------------------------
-        # 1. Reuse cached extraction
-        # ---------------------------------
+        # -------------------------------------------------
+        # 1. Reuse ontology-compatible cache
+        # -------------------------------------------------
 
         for chunk in chunks:
-            cached = cache.get(
-                chunk
+            cached = (
+                cache.get(
+                    chunk
+                )
             )
 
             if cached is not None:
@@ -111,16 +170,23 @@ class GraphIndexer:
 
         print(
             "Graph chunks requiring extraction:",
-            len(missing_chunks),
+            len(
+                missing_chunks
+            ),
         )
 
-        # ---------------------------------
-        # 2. Extract only missing chunks
-        # ---------------------------------
+        # -------------------------------------------------
+        # 2. Extract only chunks missing from
+        #    the active ontology cache.
+        # -------------------------------------------------
 
         if missing_chunks:
             extractor = (
-                GraphExtractor()
+                GraphExtractor(
+                    ontology_profile=(
+                        self.ontology_profile
+                    )
+                )
             )
 
             total_batches = (
@@ -134,10 +200,13 @@ class GraphIndexer:
                 len(missing_chunks),
                 self.batch_size,
             ):
-                batch = missing_chunks[
-                    start:
-                    start + self.batch_size
-                ]
+                batch = (
+                    missing_chunks[
+                        start:
+                        start
+                        + self.batch_size
+                    ]
+                )
 
                 batch_number = (
                     start
@@ -161,21 +230,39 @@ class GraphIndexer:
                 )
 
                 for chunk in batch:
-                    graph = batch_results[
-                        chunk.chunk_index
-                    ]
+                    graph = (
+                        batch_results[
+                            chunk.chunk_index
+                        ]
+                    )
 
                     extracted_graphs[
                         chunk.chunk_index
                     ] = graph
 
-                    # Persist immediately so a
-                    # later failure does not
-                    # lose successful extraction.
+                    # -------------------------------------
+                    # Persist immediately.
+                    #
+                    # The v2 cache identity includes:
+                    #
+                    # - cache version
+                    # - ontology profile
+                    # - ontology version
+                    # - document ID
+                    # - chunk ID
+                    # -------------------------------------
+
                     cache.set(
                         chunk=chunk,
                         graph=graph,
                     )
+
+        # -------------------------------------------------
+        # Safety check:
+        #
+        # Every supplied chunk must have either
+        # cached or newly extracted graph data.
+        # -------------------------------------------------
 
         if (
             len(extracted_graphs)
@@ -187,12 +274,17 @@ class GraphIndexer:
                 f"{len(chunks)}"
             )
 
-        # ---------------------------------
-        # 3. Process + resolve + write
-        # ---------------------------------
+        # -------------------------------------------------
+        # 3. Post-process + globally resolve +
+        #    write to Neo4j
+        # -------------------------------------------------
 
         processor = (
-            GraphPostProcessor()
+            GraphPostProcessor(
+                ontology_profile=(
+                    self.ontology_profile
+                )
+            )
         )
 
         store = (
@@ -206,8 +298,11 @@ class GraphIndexer:
         )
 
         writer = (
-            Neo4jGraphWriter(
-                store=store
+             Neo4jGraphWriter(
+                store=store,
+                ontology_profile=(
+                    self.ontology_profile
+                ),
             )
         )
 
@@ -226,6 +321,14 @@ class GraphIndexer:
                     ]
                 )
 
+                # -----------------------------------------
+                # Deterministic normalization,
+                # canonicalization and validation.
+                #
+                # GraphPostProcessor uses the SAME
+                # ontology profile.
+                # -----------------------------------------
+
                 processed = (
                     processor.process(
                         document=document,
@@ -236,11 +339,20 @@ class GraphIndexer:
                     )
                 )
 
+                # -----------------------------------------
+                # Resolve chunk-local entities against
+                # the existing global knowledge graph.
+                # -----------------------------------------
+
                 resolved = (
                     resolver.resolve(
                         processed
                     )
                 )
+
+                # -----------------------------------------
+                # Stable MERGE-based Neo4j write.
+                # -----------------------------------------
 
                 writer.write_chunk_graph(
                     document=document,
@@ -255,12 +367,13 @@ class GraphIndexer:
 
                 print(
                     "Graph indexed chunk "
-                    f"{number}/{len(chunks)}"
+                    f"{number}/"
+                    f"{len(chunks)}"
                 )
 
-            # ---------------------------------
+            # -------------------------------------------------
             # 4. Stored-document statistics
-            # ---------------------------------
+            # -------------------------------------------------
 
             document_rows = (
                 store.query(
@@ -344,34 +457,43 @@ class GraphIndexer:
                 else {}
             )
 
-            return GraphIndexStats(
-                chunk_count=(
-                    document_stats.get(
-                        "chunk_count",
-                        len(chunks),
-                    )
-                ),
-                cached_chunks=(
-                    cached_count
-                ),
-                extracted_chunks=(
-                    len(missing_chunks)
-                ),
-                entity_count=(
-                    document_stats.get(
-                        "entity_count",
-                        0,
-                    )
-                ),
-                semantic_relationship_count=(
-                    relationship_stats.get(
-                        "relationship_count",
-                        0,
-                    )
-                ),
-                rejected_relationship_count=(
-                    rejected_count
-                ),
+            return (
+                GraphIndexStats(
+                    chunk_count=(
+                        document_stats.get(
+                            "chunk_count",
+                            len(chunks),
+                        )
+                    ),
+
+                    cached_chunks=(
+                        cached_count
+                    ),
+
+                    extracted_chunks=(
+                        len(
+                            missing_chunks
+                        )
+                    ),
+
+                    entity_count=(
+                        document_stats.get(
+                            "entity_count",
+                            0,
+                        )
+                    ),
+
+                    semantic_relationship_count=(
+                        relationship_stats.get(
+                            "relationship_count",
+                            0,
+                        )
+                    ),
+
+                    rejected_relationship_count=(
+                        rejected_count
+                    ),
+                )
             )
 
         finally:

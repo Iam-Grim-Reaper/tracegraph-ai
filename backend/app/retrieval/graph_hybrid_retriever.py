@@ -60,7 +60,7 @@ class TraceGraphRetrievalResult:
 
 class GraphHybridRetriever:
     """
-    TraceGraph retrieval pipeline.
+    TraceGraph fused retrieval pipeline.
 
     Combines:
 
@@ -70,6 +70,10 @@ class GraphHybridRetriever:
     4. Neo4j graph retrieval
     5. Stable chunk-ID fusion
     6. Cross-encoder reranking
+
+    Optional document_ids provide a hard
+    retrieval scope across both Qdrant and
+    Neo4j.
     """
 
     def __init__(
@@ -107,6 +111,9 @@ class GraphHybridRetriever:
         graph_max_seed_entities: int = 5,
         graph_max_facts: int = 30,
         max_fused_candidates: int = 25,
+        document_ids: (
+            list[str] | None
+        ) = None,
     ) -> TraceGraphRetrievalResult:
         if not query.strip():
             raise ValueError(
@@ -116,6 +123,7 @@ class GraphHybridRetriever:
         # -----------------------------------------
         # 1. Dense query embedding
         # -----------------------------------------
+
         query_vector = (
             self.embedding_service
             .embed_query(
@@ -124,48 +132,74 @@ class GraphHybridRetriever:
         )
 
         # -----------------------------------------
-        # 2. Qdrant:
+        # 2. Scoped Qdrant hybrid retrieval
         #
-        # contextual dense + BM25 + RRF
+        # contextual dense
+        # +
+        # BM25
+        # +
+        # RRF
         # -----------------------------------------
+
         qdrant_results = (
             self.hybrid_store
             .hybrid_search(
                 query=query,
-                dense_vector=query_vector,
-                limit=qdrant_limit,
+
+                dense_vector=(
+                    query_vector
+                ),
+
+                limit=(
+                    qdrant_limit
+                ),
+
                 candidate_limit=(
                     qdrant_candidate_limit
+                ),
+
+                document_ids=(
+                    document_ids
                 ),
             )
         )
 
         # -----------------------------------------
-        # 3. Neo4j graph retrieval
+        # 3. Scoped Neo4j graph retrieval
         # -----------------------------------------
+
         graph_result = (
             self.graph_retriever
             .retrieve(
                 query=query,
+
                 max_seed_entities=(
                     graph_max_seed_entities
                 ),
+
                 max_facts=(
                     graph_max_facts
+                ),
+
+                document_ids=(
+                    document_ids
                 ),
             )
         )
 
         # -----------------------------------------
-        # 4. Group graph evidence by the
-        #    provenance chunk that produced it.
+        # 4. Group graph evidence by
+        # provenance chunk.
         # -----------------------------------------
+
         graph_support: dict[
             str,
             list[GraphFact],
         ] = {}
 
-        for fact in graph_result.facts:
+        for fact in (
+            graph_result.facts
+        ):
             chunk_id = (
                 fact.source_chunk_id
             )
@@ -181,9 +215,10 @@ class GraphHybridRetriever:
             )
 
         # -----------------------------------------
-        # 5. Start the candidate set with
-        #    Qdrant hybrid candidates.
+        # 5. Start candidate set with
+        # scoped Qdrant results.
         # -----------------------------------------
+
         candidate_by_id: dict[
             str,
             object,
@@ -210,16 +245,20 @@ class GraphHybridRetriever:
             )
 
         # -----------------------------------------
-        # 6. Find graph-supported chunks that
-        #    Qdrant did NOT return.
+        # 6. Add graph-supported chunks that
+        # were not returned by hybrid retrieval.
         #
-        #    Stable IDs let us fetch those exact
-        #    chunks from Qdrant.
+        # These IDs originate from graph facts
+        # that have already passed the document
+        # provenance filter.
         # -----------------------------------------
+
         missing_graph_ids = [
             chunk_id
+
             for chunk_id
             in graph_support
+
             if chunk_id
             not in candidate_by_id
         ]
@@ -231,7 +270,39 @@ class GraphHybridRetriever:
             )
         )
 
+        # Defensive check:
+        #
+        # Even though graph-only IDs came from
+        # document-scoped provenance, verify the
+        # Qdrant payload before adding them.
+        normalized_scope = (
+            set(document_ids)
+            if document_ids
+            else None
+        )
+
         for point in graph_only_points:
+            payload = (
+                point.payload
+                or {}
+            )
+
+            if (
+                normalized_scope
+                is not None
+            ):
+                point_document_id = (
+                    payload.get(
+                        "document_id"
+                    )
+                )
+
+                if (
+                    point_document_id
+                    not in normalized_scope
+                ):
+                    continue
+
             chunk_id = str(
                 point.id
             )
@@ -243,14 +314,10 @@ class GraphHybridRetriever:
         # -----------------------------------------
         # 7. Candidate-level fusion score
         #
-        # Qdrant score and graph support are
-        # different signals, so we normalize the
-        # Qdrant side before combining them.
-        #
-        # This score is ONLY used to constrain the
-        # candidate pool before cross-encoder
-        # reranking.
+        # Used only to constrain the pool
+        # before cross-encoder reranking.
         # -----------------------------------------
+
         max_hybrid_score = max(
             hybrid_score_by_id.values(),
             default=0.0,
@@ -271,8 +338,11 @@ class GraphHybridRetriever:
                     raw_hybrid_score
                     / max_hybrid_score
                 )
+
             else:
-                normalized_hybrid = 0.0
+                normalized_hybrid = (
+                    0.0
+                )
 
             graph_fact_count = len(
                 graph_support.get(
@@ -282,9 +352,10 @@ class GraphHybridRetriever:
             )
 
             # Three or more supporting facts
-            # reaches the maximum graph signal.
+            # reaches maximum graph influence.
             graph_score = min(
-                graph_fact_count / 3.0,
+                graph_fact_count
+                / 3.0,
                 1.0,
             )
 
@@ -298,9 +369,11 @@ class GraphHybridRetriever:
 
         ordered_candidate_ids = sorted(
             candidate_by_id,
+
             key=(
                 calculate_pre_fusion_score
             ),
+
             reverse=True,
         )
 
@@ -314,29 +387,63 @@ class GraphHybridRetriever:
             candidate_by_id[
                 chunk_id
             ]
+
             for chunk_id
             in selected_ids
         ]
 
         # -----------------------------------------
+        # Important:
+        #
+        # A document scope can legitimately
+        # produce zero text candidates.
+        # -----------------------------------------
+
+        if not candidate_points:
+            return (
+                TraceGraphRetrievalResult(
+                    query=query,
+
+                    linked_entities=(
+                        graph_result
+                        .linked_entities
+                    ),
+
+                    graph_facts=(
+                        graph_result.facts
+                    ),
+
+                    chunks=[],
+                )
+            )
+
+        # -----------------------------------------
         # 8. Cross-encoder reranking
         # -----------------------------------------
+
         reranked = (
             self.reranker.rerank(
                 query=query,
-                results=candidate_points,
+
+                results=(
+                    candidate_points
+                ),
+
                 top_k=top_k,
             )
         )
 
         # -----------------------------------------
-        # 9. Build rich TraceGraph results
+        # 9. Build final rich results
         # -----------------------------------------
+
         final_results: list[
             TraceGraphChunkResult
         ] = []
 
-        for reranked_item in reranked:
+        for reranked_item in (
+            reranked
+        ):
             point = (
                 reranked_item.point
             )
@@ -350,6 +457,23 @@ class GraphHybridRetriever:
                 or {}
             )
 
+            # Final defensive scope check.
+            if (
+                normalized_scope
+                is not None
+            ):
+                point_document_id = (
+                    payload.get(
+                        "document_id"
+                    )
+                )
+
+                if (
+                    point_document_id
+                    not in normalized_scope
+                ):
+                    continue
+
             supporting_facts = (
                 graph_support.get(
                     chunk_id,
@@ -359,16 +483,20 @@ class GraphHybridRetriever:
 
             graph_evidence = []
 
-            for fact in supporting_facts:
+            for fact in (
+                supporting_facts
+            ):
                 evidence = (
                     f"{fact.source_name} "
                     f"-[{fact.relationship_type}]-> "
                     f"{fact.target_name}"
                 )
 
-                if fact.evidence_text:
+                if (
+                    fact.evidence_text
+                ):
                     evidence += (
-                        f" | "
+                        " | "
                         f"{fact.evidence_text}"
                     )
 
@@ -378,7 +506,9 @@ class GraphHybridRetriever:
 
             final_results.append(
                 TraceGraphChunkResult(
-                    chunk_id=chunk_id,
+                    chunk_id=(
+                        chunk_id
+                    ),
 
                     filename=(
                         payload.get(
@@ -413,17 +543,22 @@ class GraphHybridRetriever:
                     ),
 
                     hybrid_score=(
-                        hybrid_score_by_id.get(
+                        hybrid_score_by_id
+                        .get(
                             chunk_id
                         )
                     ),
 
-                    graph_supported=bool(
-                        supporting_facts
+                    graph_supported=(
+                        bool(
+                            supporting_facts
+                        )
                     ),
 
-                    graph_fact_count=len(
-                        supporting_facts
+                    graph_fact_count=(
+                        len(
+                            supporting_facts
+                        )
                     ),
 
                     graph_evidence=(
@@ -443,19 +578,21 @@ class GraphHybridRetriever:
                 )
             )
 
-        return TraceGraphRetrievalResult(
-            query=query,
+        return (
+            TraceGraphRetrievalResult(
+                query=query,
 
-            linked_entities=(
-                graph_result
-                .linked_entities
-            ),
+                linked_entities=(
+                    graph_result
+                    .linked_entities
+                ),
 
-            graph_facts=(
-                graph_result.facts
-            ),
+                graph_facts=(
+                    graph_result.facts
+                ),
 
-            chunks=(
-                final_results
-            ),
+                chunks=(
+                    final_results
+                ),
+            )
         )

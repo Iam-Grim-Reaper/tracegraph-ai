@@ -3,7 +3,6 @@ from fastapi import (
     HTTPException,
     status,
 )
-
 from google.genai.errors import (
     ClientError,
 )
@@ -35,8 +34,16 @@ def chat(
             get_tracegraph_service()
         )
 
-        result = service.ask(
-            request.question
+        result = (
+            service.ask(
+                question=(
+                    request.question
+                ),
+
+                document_ids=(
+                    request.document_ids
+                ),
+            )
         )
 
         return ChatResponse(
@@ -48,16 +55,26 @@ def chat(
             status_code=(
                 status.HTTP_400_BAD_REQUEST
             ),
-            detail=str(exc),
+
+            detail=str(
+                exc
+            ),
         ) from exc
 
     except ClientError as exc:
-        # Gemini quota / rate-limit failure.
-        if exc.code == 429:
+        if (
+            getattr(
+                exc,
+                "code",
+                None,
+            )
+            == 429
+        ):
             raise HTTPException(
                 status_code=(
                     status.HTTP_503_SERVICE_UNAVAILABLE
                 ),
+
                 detail=(
                     "The AI provider is "
                     "temporarily rate limited. "
@@ -69,6 +86,7 @@ def chat(
             status_code=(
                 status.HTTP_502_BAD_GATEWAY
             ),
+
             detail=(
                 "The AI provider returned "
                 "an error."
@@ -78,13 +96,16 @@ def chat(
     except Exception as exc:
         print(
             "TraceGraph chat error:",
-            repr(exc),
+            repr(
+                exc
+            ),
         )
 
         raise HTTPException(
             status_code=(
                 status.HTTP_500_INTERNAL_SERVER_ERROR
             ),
+
             detail=(
                 "TraceGraph could not process "
                 "the request."

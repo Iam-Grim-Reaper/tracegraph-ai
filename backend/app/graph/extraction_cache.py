@@ -1,18 +1,56 @@
 import json
 from pathlib import Path
 
-from app.graph.models import ExtractedGraph
-from app.models.document import DocumentChunk
+from app.graph.models import (
+    ExtractedGraph,
+)
+from app.graph.ontology import (
+    OntologyProfile,
+    RESEARCH_ONTOLOGY,
+)
+from app.models.document import (
+    DocumentChunk,
+)
 
 
 class GraphExtractionCache:
-    CACHE_VERSION = "graph-extraction-v1"
+    """
+    Ontology-aware graph extraction cache.
+
+    Cache identity includes:
+
+    - cache format version
+    - ontology profile
+    - ontology version
+    - document ID
+    - chunk ID
+
+    Therefore the same chunk extracted under
+    different ontologies can never accidentally
+    share cached graph output.
+    """
+
+    CACHE_VERSION = (
+        "graph-extraction-v2.2"
+    )
 
     def __init__(
         self,
-        cache_dir: str | Path = ".cache/graph_extractions",
+        cache_dir: (
+            str | Path
+        ) = ".cache/graph_extractions",
+        ontology_profile: (
+            OntologyProfile | None
+        ) = None,
     ):
-        self.cache_dir = Path(cache_dir)
+        self.cache_dir = Path(
+            cache_dir
+        )
+
+        self.ontology_profile = (
+            ontology_profile
+            or RESEARCH_ONTOLOGY
+        )
 
         self.cache_dir.mkdir(
             parents=True,
@@ -37,13 +75,65 @@ class GraphExtractionCache:
                 )
             )
 
-            return ExtractedGraph.model_validate(
-                payload["graph"]
+            # -----------------------------------------
+            # Defensive metadata validation
+            # -----------------------------------------
+
+            if (
+                payload.get(
+                    "cache_version"
+                )
+                != self.CACHE_VERSION
+            ):
+                return None
+
+            if (
+                payload.get(
+                    "ontology_profile"
+                )
+                != self.ontology_profile.name
+            ):
+                return None
+
+            if (
+                payload.get(
+                    "ontology_version"
+                )
+                != self.ontology_profile.version
+            ):
+                return None
+
+            if (
+                payload.get(
+                    "chunk_id"
+                )
+                != str(
+                    chunk.id
+                )
+            ):
+                return None
+
+            if (
+                payload.get(
+                    "document_id"
+                )
+                != str(
+                    chunk.document_id
+                )
+            ):
+                return None
+
+            return (
+                ExtractedGraph
+                .model_validate(
+                    payload["graph"]
+                )
             )
 
         except (
             json.JSONDecodeError,
             KeyError,
+            TypeError,
             ValueError,
         ):
             return None
@@ -61,17 +151,31 @@ class GraphExtractionCache:
             "cache_version": (
                 self.CACHE_VERSION
             ),
+
+            "ontology_profile": (
+                self.ontology_profile.name
+            ),
+
+            "ontology_version": (
+                self.ontology_profile.version
+            ),
+
             "chunk_id": str(
                 chunk.id
             ),
+
             "document_id": str(
                 chunk.document_id
             ),
+
             "chunk_index": (
                 chunk.chunk_index
             ),
-            "graph": graph.model_dump(
-                mode="json"
+
+            "graph": (
+                graph.model_dump(
+                    mode="json"
+                )
             ),
         }
 
@@ -89,9 +193,10 @@ class GraphExtractionCache:
         chunk: DocumentChunk,
     ) -> bool:
         return (
-            self._cache_path(
+            self.get(
                 chunk
-            ).exists()
+            )
+            is not None
         )
 
     def _cache_path(
@@ -100,6 +205,8 @@ class GraphExtractionCache:
     ) -> Path:
         filename = (
             f"{self.CACHE_VERSION}_"
+            f"{self.ontology_profile.name}_"
+            f"ontology-{self.ontology_profile.version}_"
             f"{chunk.document_id}_"
             f"{chunk.id}.json"
         )

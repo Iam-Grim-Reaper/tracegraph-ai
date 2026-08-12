@@ -1,6 +1,9 @@
 from app.agents.workflow import (
     build_tracegraph_workflow,
 )
+from app.services.document_catalog_service import (
+    DocumentCatalogService,
+)
 
 
 class TraceGraphService:
@@ -10,9 +13,14 @@ class TraceGraphService:
 
     The workflow is compiled once and reused
     across API requests.
+
+    Retrieval can optionally be restricted to
+    selected document IDs.
     """
 
-    def __init__(self):
+    def __init__(
+        self,
+    ):
         print(
             "Initializing TraceGraph workflow..."
         )
@@ -28,19 +36,69 @@ class TraceGraphService:
     def ask(
         self,
         question: str,
+        document_ids: (
+            list[str] | None
+        ) = None,
     ) -> dict:
-        if not question.strip():
+        question = (
+            question.strip()
+        )
+
+        if not question:
             raise ValueError(
                 "Question cannot be empty"
             )
 
-        result = self.workflow.invoke(
-            {
-                "question": (
-                    question.strip()
-                ),
-                "retry_count": 0,
-            }
+        normalized_document_ids = (
+            self._normalize_document_ids(
+                document_ids
+            )
+        )
+
+        # -----------------------------------------
+        # Validate requested documents.
+        #
+        # This prevents a typo or stale frontend
+        # state from silently producing an empty
+        # retrieval result.
+        # -----------------------------------------
+
+        if normalized_document_ids:
+            self._validate_document_ids(
+                normalized_document_ids
+            )
+
+        print(
+            "TraceGraph question:",
+            question,
+        )
+
+        if normalized_document_ids:
+            print(
+                "TraceGraph document scope:",
+                normalized_document_ids,
+            )
+
+        else:
+            print(
+                "TraceGraph document scope: "
+                "ALL DOCUMENTS"
+            )
+
+        result = (
+            self.workflow.invoke(
+                {
+                    "question": (
+                        question
+                    ),
+
+                    "document_ids": (
+                        normalized_document_ids
+                    ),
+
+                    "retry_count": 0,
+                }
+            )
         )
 
         final_answer = (
@@ -57,16 +115,22 @@ class TraceGraphService:
         )
 
         return {
-            "answer": final_answer,
-
-            "route": result.get(
-                "retrieval_route",
-                "hybrid",
+            "answer": (
+                final_answer
             ),
 
-            "verified": result.get(
-                "verification_passed",
-                False,
+            "route": (
+                result.get(
+                    "retrieval_route",
+                    "hybrid",
+                )
+            ),
+
+            "verified": (
+                result.get(
+                    "verification_passed",
+                    False,
+                )
             ),
 
             "verification_reason": (
@@ -75,9 +139,11 @@ class TraceGraphService:
                 )
             ),
 
-            "retry_count": result.get(
-                "retry_count",
-                0,
+            "retry_count": (
+                result.get(
+                    "retry_count",
+                    0,
+                )
             ),
 
             "rewritten_question": (
@@ -106,7 +172,75 @@ class TraceGraphService:
                     [],
                 )
             ),
+
+            "document_ids": (
+                normalized_document_ids
+            ),
         }
+
+    @staticmethod
+    def _normalize_document_ids(
+        document_ids: (
+            list[str] | None
+        ),
+    ) -> list[str] | None:
+        if document_ids is None:
+            return None
+
+        normalized = list(
+            dict.fromkeys(
+                document_id.strip()
+                for document_id
+                in document_ids
+                if (
+                    document_id
+                    and document_id.strip()
+                )
+            )
+        )
+
+        if not normalized:
+            raise ValueError(
+                "document_ids cannot "
+                "contain only empty values."
+            )
+
+        return normalized
+
+    @staticmethod
+    def _validate_document_ids(
+        document_ids: list[str],
+    ) -> None:
+        catalog = (
+            DocumentCatalogService()
+        )
+
+        indexed_documents = (
+            catalog.list_documents()
+        )
+
+        indexed_ids = {
+            document.document_id
+            for document
+            in indexed_documents
+        }
+
+        missing_ids = [
+            document_id
+            for document_id
+            in document_ids
+            if document_id
+            not in indexed_ids
+        ]
+
+        if missing_ids:
+            raise ValueError(
+                "One or more selected "
+                "documents do not exist: "
+                + ", ".join(
+                    missing_ids
+                )
+            )
 
 
 _tracegraph_service: (
@@ -119,15 +253,14 @@ def get_tracegraph_service(
     """
     Lazily initialize one TraceGraphService
     instance per backend process.
-
-    This prevents rebuilding the workflow
-    and retrieval components on every
-    HTTP request.
     """
 
     global _tracegraph_service
 
-    if _tracegraph_service is None:
+    if (
+        _tracegraph_service
+        is None
+    ):
         _tracegraph_service = (
             TraceGraphService()
         )

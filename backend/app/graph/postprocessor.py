@@ -3,6 +3,11 @@ import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
+from app.graph.ontology import (
+    OntologyProfile,
+    RESEARCH_ONTOLOGY,
+)
+
 from app.graph.models import (
     ExtractedGraph,
     GraphEntity,
@@ -34,15 +39,31 @@ class ProcessedChunkGraph:
 
 
 class GraphPostProcessor:
-    def __init__(self):
-        self.normalizer = EntityNormalizer()
+    def __init__(
+        self,
+        ontology_profile: (
+            OntologyProfile | None
+        ) = None,
+    ):
+        self.ontology_profile = (
+            ontology_profile
+            or RESEARCH_ONTOLOGY
+        )
+
+        self.normalizer = (
+            EntityNormalizer()
+        )
 
         self.canonicalizer = (
             RelationshipCanonicalizer()
         )
 
         self.validator = (
-            GraphRelationshipValidator()
+            GraphRelationshipValidator(
+                ontology_profile=(
+                    self.ontology_profile
+                )
+            )
         )
 
     def process(
