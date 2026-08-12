@@ -250,6 +250,68 @@ def test_hybrid_representation_requires_context():
         controlled.hybrid_representation(chunk)
 
 
+def test_controlled_plan_has_exact_provider_call_estimate():
+    plan = controlled.build_controlled_index_plan(
+        controlled.load_controlled_corpus()
+    )
+
+    assert plan.document_count == 5
+    assert plan.chunk_count == 35
+    assert plan.dense_embedding_api_calls == 6
+    assert plan.hybrid_embedding_api_calls == 4
+    assert plan.hybrid_contextualization_api_calls == 4
+    assert plan.total_provider_calls == 14
+
+
+def test_controlled_stable_point_ids_match_chunks():
+    corpus = controlled.load_controlled_corpus(
+        paths=(Path("../data/career_fixture.txt"),)
+    )
+    assert controlled.stable_point_ids(corpus) == tuple(
+        str(chunk.id) for chunk in corpus[0].chunks
+    )
+
+
+def test_controlled_builder_refuses_recreation():
+    with pytest.raises(ValueError, match="never"):
+        controlled.assert_non_destructive(True)
+
+
+def test_controlled_builder_dry_run_has_no_external_calls(
+    monkeypatch,
+    capsys,
+):
+    from evaluation import build_controlled
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("external build path was called")
+
+    monkeypatch.setattr(
+        build_controlled,
+        "build_controlled_indexes",
+        forbidden,
+    )
+    assert build_controlled.main(["--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "documents: 5" in output
+    assert "chunks: 35" in output
+    assert "estimated total provider calls: 14" in output
+    assert "no collections created" in output
+
+
+def test_stable_qdrant_ids_make_reruns_idempotent():
+    corpus = controlled.load_controlled_corpus(
+        paths=(Path("../data/policy_fixture.txt"),)
+    )
+    first = controlled.stable_point_ids(corpus)
+    second = controlled.stable_point_ids(
+        controlled.load_controlled_corpus(
+            paths=(Path("../data/policy_fixture.txt"),)
+        )
+    )
+    assert first == second
+
+
 def test_controlled_variants_share_document_scope_values():
     document_ids = ["doc-a", "doc-b"]
     normalized = HybridStore._normalize_document_ids(

@@ -95,6 +95,15 @@ class ControlledIndexPlan:
             for item in self.documents
         )
 
+    @property
+    def total_provider_calls(self) -> int:
+        return (
+            self.dense_embedding_api_calls
+            + self.hybrid_embedding_api_calls
+            + self.hybrid_contextualization_api_calls
+            + self.graph_model_calls_required
+        )
+
 
 def load_controlled_corpus(
     paths: tuple[Path, ...] = CORPUS_PATHS,
@@ -172,6 +181,24 @@ def hybrid_representation(chunk: DocumentChunk) -> str:
             "Hybrid representation requires contextualized text."
         )
     return chunk.contextual_text
+
+
+def stable_point_ids(
+    corpus: tuple[CorpusDocument, ...],
+) -> tuple[str, ...]:
+    return tuple(
+        str(chunk.id)
+        for item in corpus
+        for chunk in item.chunks
+    )
+
+
+def assert_non_destructive(recreate: bool) -> None:
+    if recreate:
+        raise ValueError(
+            "Controlled evaluation collections must never "
+            "be deleted or recreated automatically."
+        )
 
 
 def create_controlled_dense_store() -> QdrantVectorStore:
