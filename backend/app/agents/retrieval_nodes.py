@@ -214,6 +214,8 @@ class RetrievalNodes:
         self,
         state: TraceGraphState,
     ) -> dict:
+        max_graph_facts = 20
+
         question = self._get_question(
             state
         )
@@ -237,7 +239,9 @@ class RetrievalNodes:
             .retrieve(
                 query=question,
                 max_seed_entities=5,
-                max_facts=20,
+                max_facts=(
+                    max_graph_facts
+                ),
                 document_ids=(
                     document_ids
                 ),
@@ -248,7 +252,9 @@ class RetrievalNodes:
             self.graph_retriever
             .format_context(
                 result=result,
-                max_facts=12,
+                max_facts=(
+                    max_graph_facts
+                ),
             )
         )
 
