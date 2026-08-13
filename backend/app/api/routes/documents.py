@@ -1,4 +1,5 @@
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Annotated
 
@@ -393,11 +394,10 @@ def upload_document(
         ) from exc
 
     except Exception as exc:
-        print(
-            "Document indexing error:",
-            repr(
-                exc
-            ),
+        traceback.print_exception(
+            type(exc),
+            exc,
+            exc.__traceback__,
         )
 
         raise HTTPException(

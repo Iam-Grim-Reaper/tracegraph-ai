@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH" \
+    GRAPH_EXTRACTION_CACHE_DIR="/app/runtime/cache/graph_extractions" \
     PORT=8080
 
 WORKDIR /app
@@ -15,7 +16,9 @@ COPY --from=uv /uv /uvx /bin/
 COPY pyproject.toml uv.lock README.md ./
 
 RUN uv sync --frozen --no-dev --no-install-project \
-    && useradd --create-home --uid 10001 appuser
+    && useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/runtime/cache/graph_extractions \
+    && chown -R appuser:appuser /app/runtime
 
 COPY --chown=appuser:appuser app ./app
 

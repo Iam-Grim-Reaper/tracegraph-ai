@@ -26,3 +26,25 @@ def test_domain_relationship_questions_use_graph(
     )
 
     assert decision.route == "graph"
+
+
+@pytest.mark.parametrize(
+    "creator_verb",
+    [
+        "made",
+        "created",
+        "developed",
+        "invented",
+        "designed",
+        "authored",
+        "built",
+    ],
+)
+def test_creator_relationship_synonyms_use_graph(
+    creator_verb,
+):
+    decision = RetrievalRouter().route(
+        f"Who {creator_verb} the method?"
+    )
+
+    assert decision.route == "graph"

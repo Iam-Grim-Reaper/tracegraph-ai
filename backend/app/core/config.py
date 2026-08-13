@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -5,6 +7,10 @@ class Settings(BaseSettings):
     app_name: str = "TraceGraph AI"
     app_env: str = "development"
     debug: bool = True
+
+    graph_extraction_cache_dir: Path = Path(
+        ".cache/graph_extractions"
+    )
 
     frontend_url: str = "http://localhost:3000"
 

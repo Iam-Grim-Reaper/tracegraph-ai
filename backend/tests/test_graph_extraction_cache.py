@@ -3,6 +3,7 @@ from uuid import uuid4
 from app.graph.extraction_cache import (
     GraphExtractionCache,
 )
+from app.core.config import settings
 from app.graph.models import (
     EntityCandidate,
     ExtractedGraph,
@@ -27,6 +28,23 @@ def test_cache_returns_none_when_missing(
     )
 
     assert cache.get(chunk) is None
+
+
+def test_cache_uses_configured_runtime_directory(
+    tmp_path,
+    monkeypatch,
+):
+    runtime_cache = tmp_path / "runtime" / "cache"
+    monkeypatch.setattr(
+        settings,
+        "graph_extraction_cache_dir",
+        runtime_cache,
+    )
+
+    cache = GraphExtractionCache()
+
+    assert cache.cache_dir == runtime_cache
+    assert runtime_cache.is_dir()
 
 
 def test_cache_round_trip(

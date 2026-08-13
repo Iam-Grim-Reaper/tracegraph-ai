@@ -60,9 +60,10 @@ class RetrievalRouter:
     # Strong graph relationship signals.
     # -------------------------------------------------
     GRAPH_PATTERNS = (
-        r"\bwho developed\b",
-        r"\bwho created\b",
-        r"\bwho authored\b",
+        (
+            r"\bwho (?:made|created|developed|invented|"
+            r"designed|authored|built)\b"
+        ),
         r"\bwho owns\b",
         r"\bwho works on\b",
         r"\bwho manages\b",

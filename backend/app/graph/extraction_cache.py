@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app.core.config import settings
 from app.graph.models import (
     ExtractedGraph,
 )
@@ -37,14 +38,15 @@ class GraphExtractionCache:
     def __init__(
         self,
         cache_dir: (
-            str | Path
-        ) = ".cache/graph_extractions",
+            str | Path | None
+        ) = None,
         ontology_profile: (
             OntologyProfile | None
         ) = None,
     ):
         self.cache_dir = Path(
             cache_dir
+            or settings.graph_extraction_cache_dir
         )
 
         self.ontology_profile = (
