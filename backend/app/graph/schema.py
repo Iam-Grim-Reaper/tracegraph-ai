@@ -213,6 +213,13 @@ SCHEMA_QUERIES = [
     FOR (c:Chunk)
     ON (c.document_id)
     """,
+
+    """
+    CREATE INDEX document_indexing_status
+    IF NOT EXISTS
+    FOR (d:Document)
+    ON (d.indexing_status)
+    """,
 ]
 
 

@@ -130,6 +130,7 @@ class HybridStore:
             "document_id"
             in payload_schema
         ):
+            self.ensure_status_index()
             return
 
         print(
@@ -145,6 +146,20 @@ class HybridStore:
             field_schema=(
                 models.PayloadSchemaType.KEYWORD
             ),
+            wait=True,
+        )
+
+        self.ensure_status_index()
+
+    def ensure_status_index(self) -> None:
+        collection_info = self.client.get_collection(self.collection_name)
+        payload_schema = getattr(collection_info, "payload_schema", {}) or {}
+        if "indexing_status" in payload_schema:
+            return
+        self.client.create_payload_index(
+            collection_name=self.collection_name,
+            field_name="indexing_status",
+            field_schema=models.PayloadSchemaType.KEYWORD,
             wait=True,
         )
 
@@ -241,11 +256,14 @@ class HybridStore:
             )
         )
 
-        if normalized is None:
-            return None
-
-        return models.Filter(
-            must=[
+        conditions = [
+            models.FieldCondition(
+                key="indexing_status",
+                match=models.MatchValue(value="ready"),
+            )
+        ]
+        if normalized is not None:
+            conditions.append(
                 models.FieldCondition(
                     key="document_id",
                     match=(
@@ -254,8 +272,8 @@ class HybridStore:
                         )
                     ),
                 )
-            ]
-        )
+            )
+        return models.Filter(must=conditions)
 
     # =================================================
     # Indexing
@@ -368,6 +386,7 @@ class HybridStore:
                 "contextual_text": (
                     chunk.contextual_text
                 ),
+                "indexing_status": "indexing",
             }
 
             # Qdrant does not need None-valued
@@ -425,6 +444,26 @@ class HybridStore:
             points=points,
             wait=True,
         )
+
+    def set_document_status(self, document_id: str, status: str) -> int:
+        selector = models.Filter(
+            must=[models.FieldCondition(
+                key="document_id",
+                match=models.MatchValue(value=document_id),
+            )]
+        )
+        count = self.client.count(
+            collection_name=self.collection_name,
+            count_filter=selector,
+            exact=True,
+        ).count
+        self.client.set_payload(
+            collection_name=self.collection_name,
+            payload={"indexing_status": status},
+            points=selector,
+            wait=True,
+        )
+        return count
 
     # =================================================
     # Lexical BM25 retrieval
@@ -641,7 +680,7 @@ class HybridStore:
         if not point_ids:
             return []
 
-        return (
+        points = (
             self.client.retrieve(
                 collection_name=(
                     self.collection_name
@@ -654,6 +693,10 @@ class HybridStore:
                 with_vectors=False,
             )
         )
+        return [
+            point for point in points
+            if (point.payload or {}).get("indexing_status") == "ready"
+        ]
 
     # =================================================
     # Collection statistics

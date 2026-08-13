@@ -135,6 +135,10 @@ class Neo4jGraphWriter:
                 }
             )
 
+            ON CREATE SET
+                d.indexing_status =
+                    'indexing'
+
             SET
                 d.filename =
                     $filename,

@@ -99,6 +99,7 @@ class QdrantVectorStore:
                 "contextual_text": (
                     chunk.contextual_text
                 ),
+                "indexing_status": "indexing",
             }
 
             payload = {
@@ -136,6 +137,10 @@ class QdrantVectorStore:
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
+            query_filter=models.Filter(must=[models.FieldCondition(
+                key="indexing_status",
+                match=models.MatchValue(value="ready"),
+            )]),
             with_payload=True,
             limit=limit,
         )

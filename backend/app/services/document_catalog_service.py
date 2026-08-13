@@ -40,6 +40,10 @@ class DocumentCatalogService:
                         d:Document
                     )
 
+                    WHERE
+                        d.indexing_status =
+                            'ready'
+
                     OPTIONAL MATCH (
                         d
                     )-[:CONTAINS]->(
@@ -174,6 +178,10 @@ class DocumentCatalogService:
                                 $document_id
                         }
                     )
+
+                    WHERE
+                        d.indexing_status =
+                            'ready'
 
                     OPTIONAL MATCH (
                         d

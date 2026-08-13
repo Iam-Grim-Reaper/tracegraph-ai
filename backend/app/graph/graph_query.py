@@ -117,18 +117,29 @@ class GraphQueryRetriever:
                 )
 
                 AND (
-                    $document_ids IS NULL
-
-                    OR EXISTS {
+                    EXISTS {
                         MATCH (
                             scope_chunk:Chunk
                         )-[:MENTIONS]->(
                             e
                         )
 
+                        MATCH (
+                            ready_document:Document {
+                                document_id:
+                                    scope_chunk.document_id
+                            }
+                        )
+
                         WHERE
-                            scope_chunk.document_id
-                            IN $document_ids
+                            ready_document.indexing_status = 'ready'
+
+                            AND (
+                                $document_ids IS NULL
+
+                                OR scope_chunk.document_id
+                                    IN $document_ids
+                            )
                     }
                 )
 
@@ -454,6 +465,16 @@ class GraphQueryRetriever:
                                 .source_document_id
                                 IN $document_ids
                         )
+
+                        AND EXISTS {
+                            MATCH (
+                                ready_document:Document {
+                                    document_id:
+                                        relationship.source_document_id
+                                }
+                            )
+                            WHERE ready_document.indexing_status = 'ready'
+                        }
                 )
 
             UNWIND
@@ -568,6 +589,12 @@ class GraphQueryRetriever:
             MATCH (source:Entity)-[relationship]->(target:Entity)
             WHERE relationship.source_chunk_id IN $chunk_ids
               AND NOT type(relationship) IN ['CONTAINS', 'MENTIONS']
+              AND EXISTS {
+                MATCH (ready_document:Document {
+                    document_id: relationship.source_document_id
+                })
+                WHERE ready_document.indexing_status = 'ready'
+              }
               AND (
                 $document_ids IS NULL
                 OR relationship.source_document_id IN $document_ids

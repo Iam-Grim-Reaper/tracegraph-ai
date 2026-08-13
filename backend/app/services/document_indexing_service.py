@@ -22,6 +22,8 @@ from app.ingestion.service import (
 from app.retrieval.hybrid_indexer import (
     HybridIndexer,
 )
+from app.services.document_catalog_service import DocumentCatalogService
+from app.services.document_readiness_service import DocumentReadinessService
 
 
 @dataclass
@@ -217,6 +219,30 @@ class DocumentIndexingService:
                 "usable text"
             )
 
+        existing = DocumentCatalogService().get_document(str(document.id))
+        if existing is not None:
+            print("Document is already ready; skipping redundant indexing.")
+            return DocumentIndexingResult(
+                document_id=existing.document_id,
+                filename=existing.filename,
+                file_type=existing.file_type,
+                title=existing.title,
+                ontology_profile=existing.ontology_profile or "general",
+                ontology_version=existing.ontology_version or "unknown",
+                ontology_profiles=existing.ontology_profiles,
+                ontology_confidence=existing.ontology_confidence or 1.0,
+                ontology_method=existing.ontology_method or "deterministic",
+                ontology_reason=existing.ontology_reason or "Existing ready document.",
+                ontology_scores=existing.ontology_scores,
+                chunk_count=existing.chunk_count,
+                qdrant_indexed_chunks=existing.chunk_count,
+                graph_entity_count=existing.entity_count,
+                graph_relationship_count=existing.graph_relationship_count,
+                graph_rejected_relationship_count=0,
+                graph_cached_chunks=existing.chunk_count,
+                graph_extracted_chunks=0,
+            )
+
         # =========================================
         # Ontology selection
         # =========================================
@@ -323,64 +349,70 @@ class DocumentIndexingService:
                 .scores,
             )
 
-        # =========================================
-        # 2. Qdrant hybrid indexing
-        # =========================================
+        readiness = DocumentReadinessService()
+        document_id = str(document.id)
+        try:
+            if not readiness.begin_indexing(document):
+                raise RuntimeError("Document became ready during indexing setup")
 
-        print(
-            "\n[2/3] Building hybrid index..."
-        )
+            # =========================================
+            # 2. Qdrant hybrid indexing
+            # =========================================
 
-        hybrid_indexer = (
-            HybridIndexer()
-        )
-
-        qdrant_count = (
-            hybrid_indexer.index(
-                document=document,
-
-                chunks=chunks,
-
-                document_text=(
-                    document_text
-                ),
-
-                reset_collection=False,
+            print(
+                "\n[2/3] Building hybrid index..."
             )
-        )
 
-        print(
-            "Qdrant chunks indexed:",
-            qdrant_count,
-        )
+            hybrid_indexer = (
+                HybridIndexer()
+            )
+
+            qdrant_count = (
+                hybrid_indexer.index(
+                    document=document,
+
+                    chunks=chunks,
+
+                    document_text=(
+                        document_text
+                    ),
+
+                    reset_collection=False,
+                )
+            )
+
+            print(
+                "Qdrant chunks indexed:",
+                qdrant_count,
+            )
 
         # =========================================
         # 3. Neo4j graph indexing
         # =========================================
 
-        print(
-            "\n[3/3] Building "
-            "knowledge graph..."
-        )
-
-        graph_indexer = (
-            GraphIndexer(
-                batch_size=(
-                    self.graph_batch_size
-                ),
-
-                ontology_profile=(
-                    selected_ontology
-                ),
+            print(
+                "\n[3/3] Building "
+                "knowledge graph..."
             )
-        )
 
-        graph_stats = (
-            graph_indexer.index(
-                document=document,
-                chunks=chunks,
+            graph_indexer = (
+                GraphIndexer(
+                    batch_size=(
+                        self.graph_batch_size
+                    ),
+
+                    ontology_profile=(
+                        selected_ontology
+                    ),
+                )
             )
-        )
+
+            graph_stats = (
+                graph_indexer.index(
+                    document=document,
+                    chunks=chunks,
+                )
+            )
 
         # =========================================
         # Persist classification metadata
@@ -394,15 +426,19 @@ class DocumentIndexingService:
         # to the Document node.
         # =========================================
 
-        self._persist_ontology_metadata(
-            document_id=str(
-                document.id
-            ),
+            self._persist_ontology_metadata(
+                document_id=document_id,
 
-            classification=(
-                ontology_classification
-            ),
-        )
+                classification=(
+                    ontology_classification
+                ),
+            )
+            readiness.finalize(document_id)
+        except Exception:
+            readiness.mark_failed(document_id)
+            raise
+        finally:
+            readiness.close()
 
         # =========================================
         # Complete
