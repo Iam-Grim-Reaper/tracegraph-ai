@@ -46,6 +46,18 @@ class FakeAdaptive:
             "qdrant_call_count": 1,
             "neo4j_call_count": 1,
             "crossencoder_call_count": 1,
+            "evidence_items": [{
+                "label": "Evidence 1",
+                "kind": "text",
+                "text": "text",
+                "document_id": "doc-1",
+                "filename": "sample.pdf",
+                "chunk_id": f"chunk-{index}",
+                "chunk_index": index - 1,
+                "page_number": 1,
+                "retrieval_route": "hybrid" if index == 1 else "graph",
+                "relevance": 4.0,
+            }],
         }
 
 
@@ -84,6 +96,12 @@ def test_complex_question_decomposes_once_and_resolves_dependency():
     assert result["crossencoder_call_count"] == 2
     assert "Evidence q1-1" in result["research_context"]
     assert "Evidence q2-1" in result["research_context"]
+    assert result["subquestions"][1]["depends_on"] == ["q1"]
+    assert [item["label"] for item in result["evidence_items"]] == [
+        "Evidence q1-1",
+        "Evidence q2-1",
+    ]
+    assert result["evidence_items"][1]["subquestion_id"] == "q2"
 
 
 def test_missing_grounded_dependency_is_not_invented():

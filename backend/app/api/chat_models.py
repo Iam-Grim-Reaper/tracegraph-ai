@@ -58,6 +58,8 @@ class ChatResponse(BaseModel):
     qdrant_call_count: int = 0
     neo4j_call_count: int = 0
     crossencoder_call_count: int = 0
+    evidence_items: list[dict] = Field(default_factory=list)
+    answer_status: str = "grounded_abstention"
 
     verified: bool
 

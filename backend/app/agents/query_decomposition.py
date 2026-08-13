@@ -116,6 +116,7 @@ class ConditionalDecompositionRetriever:
         qdrant_calls = 0
         neo4j_calls = 0
         crossencoder_calls = 0
+        evidence_items = []
 
         for item in plan.subquestions:
             grounded = []
@@ -123,7 +124,7 @@ class ConditionalDecompositionRetriever:
                 grounded.extend(results.get(dependency, {}).get("grounded_entities", []))
             grounded = list(dict.fromkeys(grounded))
             if item.depends_on and not grounded:
-                metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0})
+                metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0, "depends_on": item.depends_on})
                 continue
 
             retrieval_question = item.question
@@ -138,7 +139,7 @@ class ConditionalDecompositionRetriever:
             try:
                 result = self.adaptive(sub_state)
             except Exception:
-                metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0})
+                metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0, "depends_on": item.depends_on})
                 continue
             results[item.id] = result
             embedding_calls += result.get("query_embedding_call_count", 0)
@@ -150,7 +151,20 @@ class ConditionalDecompositionRetriever:
                 if chunk_id not in chunk_ids:
                     chunk_ids.append(chunk_id)
             evidence_count = len(result.get("retrieved_chunk_ids", []))
-            metadata.append({"id": item.id, "question": item.question, "route": result.get("retrieval_route"), "evidence_count": evidence_count})
+            metadata.append({"id": item.id, "question": item.question, "route": result.get("retrieval_route"), "evidence_count": evidence_count, "depends_on": item.depends_on})
+            for evidence in result.get("evidence_items", []):
+                original_label = str(evidence.get("label", ""))
+                public_label = re.sub(
+                    r"^(Graph )?Evidence (\d+)$",
+                    rf"\1Evidence {item.id}-\2",
+                    original_label,
+                )
+                evidence_items.append({
+                    **evidence,
+                    "label": public_label,
+                    "subquestion_id": item.id,
+                    "subquestion": item.question,
+                })
             for block in re.split(r"\n\n(?=\[(?:Graph )?Evidence \d+\])", result.get("research_context", "")):
                 identity = re.search(r"Chunk(?: ID)?: ([^\n]+)", block)
                 key = identity.group(1) if identity else block
@@ -181,4 +195,5 @@ class ConditionalDecompositionRetriever:
             "qdrant_call_count": qdrant_calls,
             "neo4j_call_count": neo4j_calls,
             "crossencoder_call_count": crossencoder_calls,
+            "evidence_items": evidence_items,
         }

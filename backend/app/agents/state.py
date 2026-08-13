@@ -47,6 +47,7 @@ class TraceGraphState(
     qdrant_call_count: int
     neo4j_call_count: int
     crossencoder_call_count: int
+    evidence_items: list[dict]
 
     # ---------------------------------
     # Research Agent

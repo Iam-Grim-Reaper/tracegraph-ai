@@ -16,6 +16,7 @@ import {
   askTraceGraph,
   DocumentSummary,
   getDocuments,
+  TraceGraphEvidence,
   TraceGraphResponse,
   uploadDocument,
 } from "../../lib/tracegraph";
@@ -1054,7 +1055,7 @@ function DocumentManager({
                             {
                               document.graph_relationship_count
                             }{" "}
-                            facts
+                            relationships
                           </span>
                         </div>
                       </div>
@@ -1420,7 +1421,65 @@ function ErrorState({
 }
 
 
-function TraceGraphResult({
+function TraceGraphResult({ result, documents }: { result: TraceGraphResponse; documents: DocumentSummary[] }) {
+  const [selectedEvidence, setSelectedEvidence] = useState<TraceGraphEvidence | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const scopeNames = result.document_ids?.map((id) => documents.find((doc) => doc.document_id === id)?.filename ?? id) ?? [];
+  const citedLabels = new Set(result.used_evidence_labels.map((label) => label.replace(/^\[|\]$/g, "")));
+  const cited = result.evidence_items.filter((item) => citedLabels.has(item.label));
+  const evidence = cited.length ? cited : result.evidence_items;
+  const graphEvidence = evidence.filter((item) => item.kind === "graph" && item.graph_fact);
+
+  return <section className="mt-8 space-y-4" aria-label="TraceGraph answer and evidence">
+    <div className="rounded-3xl border border-white/[0.09] bg-[#0a0a0a] p-6 shadow-2xl shadow-black/40 md:p-8">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge status={result.answer_status} />
+        <span className="rounded-full border border-white/[0.07] px-3 py-1 text-[11px] text-zinc-500">{scopeNames.length ? `${scopeNames.length} scoped document${scopeNames.length === 1 ? "" : "s"}` : "All documents"}</span>
+      </div>
+      {scopeNames.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{scopeNames.map((name) => <span key={name} className="rounded-lg bg-violet-500/[0.04] px-2.5 py-1.5 text-[10px] text-violet-300/70">{name}</span>)}</div>}
+      <p className="mt-7 text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300/70">Answer</p>
+      <MarkdownAnswer value={result.answer} />
+      {evidence.length > 0 && <div className="mt-7 flex flex-wrap gap-2" aria-label="Answer evidence">{evidence.map((item) => <button key={item.label} type="button" onClick={() => setSelectedEvidence(item)} className="rounded-lg border border-violet-400/15 bg-violet-500/[0.05] px-3 py-2 font-mono text-[10px] text-violet-200/70 transition hover:border-violet-400/35 hover:text-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">{item.label}</button>)}</div>}
+    </div>
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      <section className="rounded-2xl border border-violet-400/15 bg-violet-500/[0.035] p-5 md:p-6">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300/60">Routing decision</p>
+        <h2 className="mt-3 text-xl font-medium text-zinc-100">{titleCase(result.final_route ?? result.route)} Retrieval</h2>
+        <p className="mt-2 text-sm leading-6 text-zinc-400">{result.routing_reason ?? "TraceGraph selected the available grounded evidence."}</p>
+        <div className="mt-5 grid grid-cols-2 gap-3"><EvidenceCount label="Hybrid evidence" value={`${result.hybrid_evidence_count} candidates`} /><EvidenceCount label="Graph evidence" value={`${result.graph_evidence_count} facts`} /></div>
+        <button type="button" onClick={() => setShowMetrics((value) => !value)} aria-expanded={showMetrics} className="mt-4 rounded text-xs text-zinc-500 underline decoration-zinc-700 underline-offset-4 hover:text-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">{showMetrics ? "Hide technical details" : "Show technical details"}</button>
+        {showMetrics && <div className="mt-3 font-mono text-[10px] leading-5 text-zinc-600">Hybrid top: {formatScore(result.hybrid_top_relevance)} · Graph top: {formatScore(result.graph_top_relevance)} · Strategy: {result.strategy}</div>}
+      </section>
+      <section className="rounded-2xl border border-white/[0.08] bg-[#0a0a0a] p-5 md:p-6">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">Execution path</p>
+        <div className="mt-5 flex flex-wrap items-center gap-2 text-xs">
+          <PipelineNode>{result.strategy === "adaptive_evidence" ? "Adaptive Retrieval" : "Router"}</PipelineNode><Arrow />
+          {result.decomposition_used ? <><PipelineNode active>Decomposition</PipelineNode><Arrow /><PipelineNode>Evidence Merge</PipelineNode><Arrow /></> : <><PipelineNode active>{titleCase(result.final_route ?? result.route)}</PipelineNode><Arrow /></>}
+          <PipelineNode>Research</PipelineNode><Arrow /><PipelineNode verified={result.verified}>Verification {result.verified ? "✓" : ""}</PipelineNode>
+        </div>
+        {(result.degraded || result.decomposition_degraded) && <p className="mt-4 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3 text-xs text-amber-200/70">Execution completed with limited evidence{result.degradation_reason ? `: ${result.degradation_reason}` : "."}</p>}
+      </section>
+    </div>
+
+    {result.decomposition_used && <section className="rounded-2xl border border-white/[0.08] bg-[#0a0a0a] p-5 md:p-6">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">Question decomposition</p>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">{result.subquestions.map((item, index) => <div key={item.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+        <div className="flex items-center justify-between"><span className="font-mono text-xs text-violet-300">{index + 1}</span><RouteBadge route={item.route ?? "unresolved"} /></div>
+        <p className="mt-3 text-sm leading-6 text-zinc-300">{item.question}</p><p className="mt-3 text-xs text-zinc-600">{item.evidence_count} evidence items{item.depends_on?.length ? ` · after ${item.depends_on.join(", ")}` : ""}</p>
+      </div>)}</div>
+    </section>}
+
+    {graphEvidence.length > 0 && <section className="rounded-2xl border border-white/[0.08] bg-[#0a0a0a] p-5 md:p-6">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-600">Graph evidence</p>
+      <div className="mt-5 grid gap-3 xl:grid-cols-2">{graphEvidence.map((item) => <GraphEvidenceCard key={item.label} evidence={item} onOpen={() => setSelectedEvidence(item)} />)}</div>
+    </section>}
+    {result.verification_reason && <details className="rounded-2xl border border-white/[0.07] bg-[#0a0a0a] p-5 text-sm text-zinc-500"><summary className="cursor-pointer text-xs font-medium text-zinc-400">Verification report</summary><p className="mt-3 leading-6">{result.verification_reason}</p></details>}
+    {selectedEvidence && <EvidenceDrawer evidence={selectedEvidence} onClose={() => setSelectedEvidence(null)} />}
+  </section>;
+}
+
+function LegacyTraceGraphResult({
   result,
   documents,
 }: {
@@ -1712,4 +1771,92 @@ function Arrow() {
       →
     </span>
   );
+}
+
+void LegacyTraceGraphResult;
+
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function formatScore(value: number | null) {
+  return value === null ? "Unavailable" : value.toFixed(3);
+}
+
+function StatusBadge({ status }: { status: TraceGraphResponse["answer_status"] }) {
+  const labels = {
+    verified_answer: ["Verified answer", "border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300"],
+    verified_abstention: ["Verified grounded abstention", "border-sky-500/20 bg-sky-500/[0.07] text-sky-300"],
+    degraded_retrieval: ["Degraded retrieval", "border-amber-500/20 bg-amber-500/[0.07] text-amber-300"],
+    partial_grounded_answer: ["Partial grounded answer", "border-amber-500/20 bg-amber-500/[0.07] text-amber-300"],
+    grounded_abstention: ["Grounded abstention", "border-zinc-500/20 bg-zinc-500/[0.07] text-zinc-300"],
+  } as const;
+  const [label, style] = labels[status];
+  return <span className={`rounded-full border px-3 py-1 text-[11px] font-medium ${style}`}>{label}</span>;
+}
+
+function EvidenceCount({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3"><p className="text-[10px] text-zinc-600">{label}</p><p className="mt-1 text-sm text-zinc-300">{value}</p></div>;
+}
+
+function InlineMarkdown({ value }: { value: string }) {
+  return <>{value.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index} className="rounded bg-white/[0.07] px-1.5 py-0.5 font-mono text-[0.9em] text-violet-200">{part.slice(1, -1)}</code>;
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index} className="font-semibold text-zinc-100">{part.slice(2, -2)}</strong>;
+    return <span key={index}>{part}</span>;
+  })}</>;
+}
+
+function MarkdownAnswer({ value }: { value: string }) {
+  const nodes: ReactNode[] = [];
+  const lines = value.replace(/<[^>]*>/g, "").split("\n");
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index].trim();
+    if (!line) { index += 1; continue; }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) { nodes.push(<h3 key={index} className="mt-6 text-lg font-semibold text-zinc-100"><InlineMarkdown value={heading[2]} /></h3>); index += 1; continue; }
+    const unordered = line.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      const items = []; const start = index;
+      while (index < lines.length) { const match = lines[index].trim().match(/^[-*]\s+(.+)$/); if (!match) break; items.push(match[1]); index += 1; }
+      nodes.push(<ul key={start} className="mt-4 list-disc space-y-2 pl-5 text-zinc-300">{items.map((item, itemIndex) => <li key={itemIndex}><InlineMarkdown value={item} /></li>)}</ul>); continue;
+    }
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      const items = []; const start = index;
+      while (index < lines.length) { const match = lines[index].trim().match(/^\d+[.)]\s+(.+)$/); if (!match) break; items.push(match[1]); index += 1; }
+      nodes.push(<ol key={start} className="mt-4 list-decimal space-y-2 pl-5 text-zinc-300">{items.map((item, itemIndex) => <li key={itemIndex}><InlineMarkdown value={item} /></li>)}</ol>); continue;
+    }
+    nodes.push(<p key={index} className="mt-4 text-[15px] leading-7 text-zinc-200 md:text-base"><InlineMarkdown value={line} /></p>); index += 1;
+  }
+  return <div>{nodes}</div>;
+}
+
+function GraphEvidenceCard({ evidence, onOpen }: { evidence: TraceGraphEvidence; onOpen: () => void }) {
+  const fact = evidence.graph_fact!;
+  return <button type="button" onClick={onOpen} aria-label={`Open source for ${fact.source} ${fact.relationship} ${fact.target}`} className="group w-full rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 text-left transition hover:border-violet-400/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 text-center">
+      <span className="break-words rounded-lg bg-violet-500/[0.07] px-3 py-3 text-sm text-violet-100">{fact.source}</span>
+      <span className="max-w-32 break-words font-mono text-[9px] text-violet-300/70"><span className="block text-zinc-700">→</span>{fact.relationship}<span className="block text-zinc-700">→</span></span>
+      <span className="break-words rounded-lg bg-white/[0.04] px-3 py-3 text-sm text-zinc-200">{fact.target}</span>
+    </div>
+    <p className="mt-3 truncate text-[10px] text-zinc-600">{evidence.filename ?? "Indexed document"}{evidence.page_number !== null ? ` · Page ${evidence.page_number}` : ""} · View provenance</p>
+  </button>;
+}
+
+function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; onClose: () => void }) {
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
+  return <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="h-full w-full max-w-lg overflow-y-auto border-l border-white/[0.1] bg-[#090909] p-6 shadow-2xl md:p-8">
+      <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[0.2em] text-violet-300/60">{evidence.kind === "graph" ? "Source graph fact" : "Source evidence"}</p><h2 id="evidence-title" className="mt-2 text-lg font-medium text-zinc-100">{evidence.filename ?? "Indexed document"}</h2></div><button type="button" onClick={onClose} aria-label="Close evidence drawer" autoFocus className="rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-zinc-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">Close</button></div>
+      <div className="mt-6 flex flex-wrap gap-2 text-[10px] text-zinc-500">{evidence.page_number !== null && <span>Page {evidence.page_number}</span>}<span>{titleCase(evidence.retrieval_route)} retrieval</span>{evidence.chunk_id && <span className="font-mono">Chunk {evidence.chunk_id.slice(0, 12)}…</span>}</div>
+      {evidence.graph_fact && <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-500/[0.04] p-4"><p className="text-sm text-zinc-200">{evidence.graph_fact.source}</p><p className="my-2 font-mono text-xs text-violet-300">{evidence.graph_fact.relationship} →</p><p className="text-sm text-zinc-200">{evidence.graph_fact.target}</p></div>}
+      <div className="mt-6 border-t border-white/[0.07] pt-6"><p className="whitespace-pre-wrap text-sm leading-7 text-zinc-300">{evidence.text || "No source excerpt was returned for this evidence item."}</p></div>
+      {evidence.subquestion && <div className="mt-6 border-t border-white/[0.07] pt-6"><p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600">Used for</p><p className="mt-2 text-sm leading-6 text-zinc-400">“{evidence.subquestion}”</p></div>}
+    </aside>
+  </div>;
 }

@@ -114,6 +114,30 @@ class TraceGraphService:
             )
         )
 
+        evidence_items = result.get("evidence_items", [])
+        documents_by_id = {
+            document.document_id: document.filename
+            for document in DocumentCatalogService().list_documents()
+        }
+        for item in evidence_items:
+            if not item.get("filename") and item.get("document_id"):
+                item["filename"] = documents_by_id.get(item["document_id"])
+
+        used_labels = result.get("used_evidence_labels", [])
+        verified = result.get("verification_passed", False)
+        degraded = result.get("degraded", False)
+        decomposition_degraded = result.get("decomposition_degraded", False)
+        if degraded:
+            answer_status = "degraded_retrieval"
+        elif verified and used_labels:
+            answer_status = "verified_answer"
+        elif verified:
+            answer_status = "verified_abstention"
+        elif used_labels or decomposition_degraded:
+            answer_status = "partial_grounded_answer"
+        else:
+            answer_status = "grounded_abstention"
+
         return {
             "answer": (
                 final_answer
@@ -159,6 +183,8 @@ class TraceGraphService:
             "qdrant_call_count": result.get("qdrant_call_count", 0),
             "neo4j_call_count": result.get("neo4j_call_count", 0),
             "crossencoder_call_count": result.get("crossencoder_call_count", 0),
+            "evidence_items": evidence_items,
+            "answer_status": answer_status,
 
             "verified": (
                 result.get(

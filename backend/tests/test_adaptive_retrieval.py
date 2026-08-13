@@ -74,6 +74,7 @@ def point(text="text evidence"):
         id="chunk-1",
         payload={
             "text": text,
+            "document_id": "doc-1",
             "filename": "sample.pdf",
             "page_number": 1,
             "chunk_index": 0,
@@ -159,6 +160,25 @@ def test_adaptive_retrieval_reuses_probes_and_scope(monkeypatch):
     assert result["query_embedding_call_count"] == 1
     assert hybrid.document_ids == graph.document_ids == ["doc-1"]
     assert "Graph Evidence" in result["research_context"]
+    assert result["evidence_items"][0] == {
+        "label": "Evidence 1",
+        "kind": "text",
+        "text": "text evidence",
+        "document_id": "doc-1",
+        "filename": "sample.pdf",
+        "chunk_id": "chunk-1",
+        "chunk_index": 0,
+        "page_number": 1,
+        "retrieval_route": "hybrid",
+        "relevance": 4.0,
+    }
+    graph_item = result["evidence_items"][1]
+    assert graph_item["graph_fact"] == {
+        "source": "Grad-CAM",
+        "relationship": "DEVELOPED_BY",
+        "target": "R. R. Selvaraju",
+    }
+    assert graph_item["text"] == "Grad-CAM was developed by Selvaraju et al."
 
 
 def test_graph_only_and_hybrid_only_routes(monkeypatch):

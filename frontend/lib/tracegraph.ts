@@ -75,6 +75,40 @@ export interface TraceGraphResponse {
 
   route: RetrievalRoute;
 
+  strategy: string;
+
+  initial_route: RetrievalRoute | null;
+
+  final_route: RetrievalRoute | null;
+
+  routing_reason: string | null;
+
+  hybrid_evidence_count: number;
+
+  graph_evidence_count: number;
+
+  hybrid_top_relevance: number | null;
+
+  graph_top_relevance: number | null;
+
+  requires_decomposition: boolean;
+
+  degraded: boolean;
+
+  degradation_reason: string | null;
+
+  decomposition_used: boolean;
+
+  decomposition_degraded: boolean;
+
+  subquestion_count: number;
+
+  subquestions: TraceGraphSubquestion[];
+
+  evidence_items: TraceGraphEvidence[];
+
+  answer_status: AnswerStatus;
+
   verified: boolean;
 
   verification_reason: string | null;
@@ -326,4 +360,41 @@ export async function uploadDocument(
   return (
     (await response.json()) as DocumentUploadResponse
   );
+}
+
+export type AnswerStatus =
+  | "verified_answer"
+  | "verified_abstention"
+  | "degraded_retrieval"
+  | "partial_grounded_answer"
+  | "grounded_abstention";
+
+export interface TraceGraphSubquestion {
+  id: string;
+  question: string;
+  route: RetrievalRoute | null;
+  evidence_count: number;
+  depends_on?: string[];
+}
+
+export interface GraphFactView {
+  source: string;
+  relationship: string;
+  target: string;
+}
+
+export interface TraceGraphEvidence {
+  label: string;
+  kind: "text" | "graph";
+  text: string;
+  document_id: string | null;
+  filename: string | null;
+  chunk_id: string | null;
+  chunk_index: number | null;
+  page_number: number | null;
+  retrieval_route: RetrievalRoute;
+  relevance: number | null;
+  graph_fact?: GraphFactView;
+  subquestion_id?: string;
+  subquestion?: string;
 }

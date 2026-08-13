@@ -236,7 +236,7 @@ class AdaptiveEvidenceRetriever:
             ranked_hybrid = []
             ranked_graph = []
 
-        context, chunk_ids, graph_count = self._compose_context(
+        context, chunk_ids, graph_count, evidence_items = self._compose_context(
             decision.route,
             ranked_hybrid,
             ranked_graph,
@@ -268,6 +268,7 @@ class AdaptiveEvidenceRetriever:
             "qdrant_call_count": 1,
             "neo4j_call_count": neo4j_call_count,
             "crossencoder_call_count": 1 if scores else 0,
+            "evidence_items": evidence_items,
         }
 
     def _get_reranker(self):
@@ -308,6 +309,7 @@ class AdaptiveEvidenceRetriever:
     def _compose_context(route, ranked_hybrid, ranked_graph):
         parts = []
         chunk_ids = []
+        evidence_items = []
         include_hybrid = route in {"hybrid", "fused"}
         include_graph = route in {"graph", "fused"}
 
@@ -322,6 +324,18 @@ class AdaptiveEvidenceRetriever:
                     f"Chunk ID: {chunk_id}\nRerank score: {score:.4f}\n\n"
                     f"{payload.get('text', '')}"
                 )
+                evidence_items.append({
+                    "label": f"Evidence {index}",
+                    "kind": "text",
+                    "text": str(payload.get("text", "")),
+                    "document_id": payload.get("document_id"),
+                    "filename": payload.get("filename"),
+                    "chunk_id": chunk_id,
+                    "chunk_index": payload.get("chunk_index"),
+                    "page_number": payload.get("page_number"),
+                    "retrieval_route": "hybrid",
+                    "relevance": score,
+                })
 
         graph_count = 0
         if include_graph:
@@ -336,10 +350,27 @@ class AdaptiveEvidenceRetriever:
                     f"Document ID: {fact.source_document_id}\nConfidence: {fact.confidence}\n"
                     f"Relevance: {score:.4f}\nEvidence: {fact.evidence_text}"
                 )
+                evidence_items.append({
+                    "label": f"Graph Evidence {index}",
+                    "kind": "graph",
+                    "text": fact.evidence_text or fact.source_text or "",
+                    "document_id": fact.source_document_id,
+                    "filename": None,
+                    "chunk_id": fact.source_chunk_id,
+                    "chunk_index": None,
+                    "page_number": fact.page_number,
+                    "retrieval_route": "graph",
+                    "relevance": score,
+                    "graph_fact": {
+                        "source": fact.source_name,
+                        "relationship": fact.relationship_type,
+                        "target": fact.target_name,
+                    },
+                })
 
         if not parts:
             parts.append("No document-scoped retrieval evidence found.")
-        return "\n\n".join(parts), chunk_ids, graph_count
+        return "\n\n".join(parts), chunk_ids, graph_count, evidence_items
 
     @staticmethod
     def _grounded_entities(ranked_graph):
