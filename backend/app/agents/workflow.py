@@ -7,6 +7,10 @@ from langgraph.graph import (
 from app.agents.research_agent import (
     ResearchAgent,
 )
+from app.agents.adaptive_retrieval import (
+    AdaptiveEvidenceRetriever,
+)
+from app.core.config import settings
 from app.agents.retrieval_nodes import (
     RetrievalNodes,
 )
@@ -24,6 +28,14 @@ from app.agents.verification_agent import (
 
 
 def build_tracegraph_workflow():
+    if settings.query_routing_mode not in {
+        "adaptive",
+        "legacy",
+    }:
+        raise ValueError(
+            "QUERY_ROUTING_MODE must be adaptive or legacy"
+        )
+
     router = RetrievalRouter()
 
     retrieval = RetrievalNodes()
@@ -48,6 +60,12 @@ def build_tracegraph_workflow():
         "retrieval_router",
         router,
     )
+
+    if settings.query_routing_mode == "adaptive":
+        workflow.add_node(
+            "adaptive_retrieval",
+            AdaptiveEvidenceRetriever(),
+        )
 
     workflow.add_node(
         "hybrid_retrieval",
@@ -84,30 +102,35 @@ def build_tracegraph_workflow():
     # Entry
     # ---------------------------------
 
-    workflow.add_edge(
-        START,
-        "retrieval_router",
-    )
+    if settings.query_routing_mode == "adaptive":
+        workflow.add_edge(
+            START,
+            "adaptive_retrieval",
+        )
+        workflow.add_edge(
+            "adaptive_retrieval",
+            "research_agent",
+        )
+    else:
+        workflow.add_edge(
+            START,
+            "retrieval_router",
+        )
 
     # ---------------------------------
     # Retrieval Router
     # ---------------------------------
 
-    workflow.add_conditional_edges(
-        "retrieval_router",
-        route_after_router,
-        {
-            "hybrid": (
-                "hybrid_retrieval"
-            ),
-            "graph": (
-                "graph_retrieval"
-            ),
-            "fused": (
-                "fused_retrieval"
-            ),
-        },
-    )
+    if settings.query_routing_mode == "legacy":
+        workflow.add_conditional_edges(
+            "retrieval_router",
+            route_after_router,
+            {
+                "hybrid": "hybrid_retrieval",
+                "graph": "graph_retrieval",
+                "fused": "fused_retrieval",
+            },
+        )
 
     # ---------------------------------
     # All retrieval paths converge
@@ -177,7 +200,11 @@ def build_tracegraph_workflow():
 
     workflow.add_edge(
         "verification_retry",
-        "retrieval_router",
+        (
+            "adaptive_retrieval"
+            if settings.query_routing_mode == "adaptive"
+            else "retrieval_router"
+        ),
     )
 
     return workflow.compile()

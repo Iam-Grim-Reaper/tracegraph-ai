@@ -126,6 +126,31 @@ class TraceGraphService:
                 )
             ),
 
+            "strategy": result.get(
+                "routing_strategy",
+                "legacy",
+            ),
+            "initial_route": result.get(
+                "initial_route",
+                result.get("retrieval_route", "hybrid"),
+            ),
+            "final_route": result.get(
+                "final_route",
+                result.get("retrieval_route", "hybrid"),
+            ),
+            "routing_reason": result.get("routing_reason"),
+            "hybrid_evidence_count": result.get("hybrid_evidence_count", 0),
+            "graph_evidence_count": result.get("graph_evidence_count", 0),
+            "hybrid_top_relevance": result.get("hybrid_top_relevance"),
+            "graph_top_relevance": result.get("graph_top_relevance"),
+            "requires_decomposition": result.get("requires_decomposition", False),
+            "degraded": result.get("degraded", False),
+            "degradation_reason": result.get("degradation_reason"),
+            "query_embedding_call_count": result.get("query_embedding_call_count", 0),
+            "hybrid_probe_latency_ms": result.get("hybrid_probe_latency_ms"),
+            "graph_probe_latency_ms": result.get("graph_probe_latency_ms"),
+            "adaptive_retrieval_latency_ms": result.get("adaptive_retrieval_latency_ms"),
+
             "verified": (
                 result.get(
                     "verification_passed",

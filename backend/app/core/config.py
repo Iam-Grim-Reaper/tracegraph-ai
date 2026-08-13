@@ -12,6 +12,25 @@ class Settings(BaseSettings):
         ".cache/graph_extractions"
     )
 
+    # Query Intelligence V2. ``legacy`` preserves the
+    # regex router as an explicit rollback path.
+    query_routing_mode: str = "adaptive"
+
+    # Initial engineering defaults for deciding whether
+    # CrossEncoder-ranked evidence is usable. These are
+    # configurable deployment controls, not calibrated
+    # confidence claims.
+    adaptive_evidence_relevance_threshold: float = -9.0
+    adaptive_evidence_dominance_margin: float = 2.0
+    adaptive_evidence_mean_top_k: int = 3
+    adaptive_graph_max_seed_entities: int = 5
+    adaptive_graph_max_facts: int = 20
+    adaptive_hybrid_candidate_limit: int = 30
+    adaptive_hybrid_limit: int = 15
+    reranker_model_name: str = (
+        "cross-encoder/ms-marco-MiniLM-L6-v2"
+    )
+
     frontend_url: str = "http://localhost:3000"
 
     # Gemini

@@ -22,6 +22,22 @@ class TraceGraphState(
     # ---------------------------------
     retrieval_route: RetrievalRoute
     routing_reason: str
+    routing_strategy: str
+    initial_route: RetrievalRoute
+    final_route: RetrievalRoute
+    hybrid_evidence_count: int
+    graph_evidence_count: int
+    hybrid_top_relevance: float | None
+    graph_top_relevance: float | None
+    hybrid_mean_relevance: float | None
+    graph_mean_relevance: float | None
+    requires_decomposition: bool
+    degraded: bool
+    degradation_reason: str | None
+    query_embedding_call_count: int
+    hybrid_probe_latency_ms: float | None
+    graph_probe_latency_ms: float | None
+    adaptive_retrieval_latency_ms: float | None
 
     # ---------------------------------
     # Research Agent

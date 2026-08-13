@@ -2,6 +2,8 @@ from dataclasses import dataclass
 
 from sentence_transformers import CrossEncoder
 
+from app.core.config import settings
+
 
 @dataclass
 class RerankedResult:
@@ -12,12 +14,12 @@ class RerankedResult:
 class CrossEncoderReranker:
     def __init__(
         self,
-        model_name: str = (
-            "cross-encoder/"
-            "ms-marco-MiniLM-L6-v2"
-        ),
+        model_name: str | None = None,
     ):
-        self.model_name = model_name
+        self.model_name = (
+            model_name
+            or settings.reranker_model_name
+        )
 
         print(
             f"Loading reranker: {self.model_name}"
@@ -84,3 +86,27 @@ class CrossEncoderReranker:
         )
 
         return reranked[:top_k]
+
+    def score_texts(
+        self,
+        query: str,
+        texts: list[str],
+    ) -> list[float]:
+        """Score arbitrary evidence text in one model call."""
+        if not query.strip():
+            raise ValueError(
+                "Query cannot be empty"
+            )
+
+        if not texts:
+            return []
+
+        scores = self.model.predict(
+            [(query, value) for value in texts],
+            show_progress_bar=False,
+        )
+
+        return [
+            float(score)
+            for score in scores
+        ]

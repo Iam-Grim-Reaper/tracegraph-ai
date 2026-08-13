@@ -215,7 +215,12 @@ class GraphQueryRetriever:
         document_ids: (
             list[str] | None
         ) = None,
+        max_path_depth: int = 2,
     ) -> GraphQueryResult:
+        if max_path_depth not in {1, 2}:
+            raise ValueError(
+                "max_path_depth must be 1 or 2"
+            )
         linked_entities = (
             self.link_entities(
                 query=query,
@@ -261,6 +266,9 @@ class GraphQueryRetriever:
 
                     document_ids=(
                         document_ids
+                    ),
+                    max_path_depth=(
+                        max_path_depth
                     ),
                 )
             )
@@ -400,6 +408,7 @@ class GraphQueryRetriever:
         document_ids: (
             list[str] | None
         ) = None,
+        max_path_depth: int = 2,
     ) -> list[dict]:
         scoped_document_ids = (
             document_ids
@@ -407,14 +416,13 @@ class GraphQueryRetriever:
             else None
         )
 
-        return self.store.query(
-            """
+        cypher = """
             MATCH path = (
                 seed:Entity {
                     entity_id:
                         $entity_id
                 }
-            )-[rels*1..2]-(
+            )-[rels*1..__MAX_PATH_DEPTH__]-(
                 other:Entity
             )
 
@@ -514,7 +522,13 @@ class GraphQueryRetriever:
                     AS source_text
 
             LIMIT $limit
-            """,
+            """.replace(
+                "__MAX_PATH_DEPTH__",
+                str(max_path_depth),
+            )
+
+        return self.store.query(
+            cypher,
             {
                 "entity_id": (
                     entity_id
@@ -527,6 +541,58 @@ class GraphQueryRetriever:
                 "limit": limit,
             },
         )
+
+    def retrieve_by_chunk_ids(
+        self,
+        query: str,
+        chunk_ids: list[str],
+        document_ids: list[str] | None = None,
+        max_facts: int = 20,
+    ) -> GraphQueryResult:
+        """Retrieve bounded semantic facts owned by evidence chunks."""
+        if not chunk_ids:
+            return GraphQueryResult(query, [], [])
+
+        rows = self.store.query(
+            """
+            MATCH (source:Entity)-[relationship]->(target:Entity)
+            WHERE relationship.source_chunk_id IN $chunk_ids
+              AND NOT type(relationship) IN ['CONTAINS', 'MENTIONS']
+              AND (
+                $document_ids IS NULL
+                OR relationship.source_document_id IN $document_ids
+              )
+            OPTIONAL MATCH (chunk:Chunk {
+                chunk_id: relationship.source_chunk_id
+            })
+            RETURN
+                source.entity_id AS source_entity_id,
+                source.name AS source_name,
+                source.entity_type AS source_type,
+                type(relationship) AS relationship_type,
+                target.entity_id AS target_entity_id,
+                target.name AS target_name,
+                target.entity_type AS target_type,
+                relationship.confidence AS confidence,
+                relationship.evidence_text AS evidence_text,
+                relationship.source_document_id AS source_document_id,
+                relationship.source_chunk_id AS source_chunk_id,
+                relationship.page_number AS page_number,
+                chunk.text AS source_text
+            LIMIT $limit
+            """,
+            {
+                "chunk_ids": list(dict.fromkeys(chunk_ids)),
+                "document_ids": document_ids if document_ids else None,
+                "limit": max_facts,
+            },
+        )
+
+        facts = [
+            GraphFact(**row)
+            for row in rows
+        ]
+        return GraphQueryResult(query, [], facts)
 
     @staticmethod
     def format_context(

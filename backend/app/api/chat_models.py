@@ -34,6 +34,21 @@ class ChatResponse(BaseModel):
     answer: str
 
     route: str
+    strategy: str = "legacy"
+    initial_route: str | None = None
+    final_route: str | None = None
+    routing_reason: str | None = None
+    hybrid_evidence_count: int = 0
+    graph_evidence_count: int = 0
+    hybrid_top_relevance: float | None = None
+    graph_top_relevance: float | None = None
+    requires_decomposition: bool = False
+    degraded: bool = False
+    degradation_reason: str | None = None
+    query_embedding_call_count: int = 0
+    hybrid_probe_latency_ms: float | None = None
+    graph_probe_latency_ms: float | None = None
+    adaptive_retrieval_latency_ms: float | None = None
 
     verified: bool
 
