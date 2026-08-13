@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.graph.models import (
     ExtractedGraph,
     GraphExtractionBatch,
+    RawGraphExtractionBatch,
     RelationshipCandidate,
 )
 from app.graph.ontology import (
@@ -202,6 +203,15 @@ class GraphExtractor:
                 )
 
             for item in result.chunks:
+                normalized_entities, normalized_relationships = (
+                    self._normalize_profile_entity_types(
+                        entities=item.entities,
+                        relationships=item.relationships,
+                        document_id=str(document.id),
+                    )
+                )
+                item.entities = normalized_entities
+                item.relationships = normalized_relationships
                 # -----------------------------------------
                 # 1. Enforce ontology boundaries on
                 #    Gemini's raw response.
@@ -473,7 +483,7 @@ GENERAL RULES:
                             "application/json"
                         ),
                         response_schema=(
-                            GraphExtractionBatch
+                            RawGraphExtractionBatch
                         ),
                     )
                 ),
@@ -486,16 +496,62 @@ GENERAL RULES:
                 "graph extraction response"
             )
 
-        return (
-            GraphExtractionBatch
-            .model_validate_json(
-                response.text
-            )
+        raw_result = (
+            RawGraphExtractionBatch
+            .model_validate_json(response.text)
+        )
+
+        return GraphExtractionBatch.model_validate(
+            raw_result.model_dump()
         )
 
     # =====================================================
     # Ontology validation
     # =====================================================
+
+    def _normalize_profile_entity_types(
+        self, entities, relationships, document_id: str = "unknown"
+    ):
+        allowed = self.ontology_profile.entity_types
+        fallback = EntityType.CONCEPT
+
+        def normalize(value, entity_name):
+            if isinstance(value, EntityType) and value in allowed:
+                return value, None
+            original = value.value if isinstance(value, EntityType) else value
+            print(
+                "ontology_entity_type_fallback",
+                f"document_id={document_id}",
+                f"active_ontology={self.ontology_profile.name}",
+                f"entity_name={entity_name}",
+                f"original_type={original}",
+                f"normalized_type={fallback.value}",
+            )
+            return fallback, original
+
+        normalized_entities = []
+        types_by_name = {}
+        for entity in entities:
+            normalized, original = normalize(entity.entity_type, entity.name)
+            types_by_name[entity.name.strip().casefold()] = normalized
+            normalized_entities.append(entity.model_copy(update={
+                "entity_type": normalized,
+                "original_entity_type": original or entity.original_entity_type,
+            }))
+
+        normalized_relationships = []
+        for relationship in relationships:
+            source_type = types_by_name.get(relationship.source_name.strip().casefold())
+            target_type = types_by_name.get(relationship.target_name.strip().casefold())
+            if source_type is None:
+                source_type, _ = normalize(relationship.source_type, relationship.source_name)
+            if target_type is None:
+                target_type, _ = normalize(relationship.target_type, relationship.target_name)
+            normalized_relationships.append(relationship.model_copy(update={
+                "source_type": source_type,
+                "target_type": target_type,
+            }))
+        return normalized_entities, normalized_relationships
 
     def _validate_profile_output(
         self,

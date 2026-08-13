@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     decomposition_model: str = "gemini-3.5-flash-lite"
     decomposition_max_subquestions: int = 3
 
+    office_max_archive_uncompressed_bytes: int = 100 * 1024 * 1024
+    office_max_archive_entries: int = 5000
+    xlsx_max_worksheets: int = 20
+    xlsx_max_rows_per_sheet: int = 5000
+    xlsx_max_columns: int = 100
+    xlsx_max_non_empty_cells: int = 100000
+    office_max_extracted_chars: int = 2_000_000
+
     frontend_url: str = "http://localhost:3000"
 
     # Gemini

@@ -5,6 +5,7 @@ from app.models.document import (
     Document,
     DocumentChunk,
     ParsedPage,
+    ParsedUnit,
     create_stable_chunk_id,
 )
 
@@ -84,6 +85,47 @@ class TextChunker:
             document=document,
             chunk_specs=chunk_specs,
         )
+
+    def chunk_units(
+        self,
+        document: Document,
+        units: list[ParsedUnit],
+    ) -> list[DocumentChunk]:
+        if not units:
+            raise ValueError("Cannot chunk an empty unit list")
+        chunk_specs = []
+        for unit in units:
+            for text in self._chunk_text(unit.text) if unit.text.strip() else []:
+                chunk_specs.append((unit, text))
+        if not chunk_specs:
+            raise ValueError("Units contain no chunkable text")
+
+        chunk_ids = [
+            create_stable_chunk_id(
+                document.id, index, text, unit.page_number
+            )
+            for index, (unit, text) in enumerate(chunk_specs)
+        ]
+        return [
+            DocumentChunk(
+                id=chunk_ids[index],
+                document_id=document.id,
+                chunk_index=index,
+                text=text,
+                metadata=ChunkMetadata(
+                    page_number=unit.page_number,
+                    section=unit.section,
+                    heading=unit.heading,
+                    source_locator=unit.source_locator,
+                ),
+                previous_chunk_id=chunk_ids[index - 1] if index else None,
+                next_chunk_id=(
+                    chunk_ids[index + 1]
+                    if index < len(chunk_ids) - 1 else None
+                ),
+            )
+            for index, (unit, text) in enumerate(chunk_specs)
+        ]
 
     def _chunk_text(
         self,

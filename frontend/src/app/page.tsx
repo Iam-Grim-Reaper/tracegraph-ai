@@ -980,9 +980,8 @@ function DocumentManager({
                 </p>
 
                 <p className="mt-2 text-[10px] leading-4 text-zinc-700">
-                  Upload a PDF,
-                  TXT, or Markdown
-                  document.
+                  Upload PDF, TXT, Markdown,
+                  DOCX, PPTX, or XLSX.
                 </p>
               </div>
             )}
@@ -1090,7 +1089,7 @@ function DocumentManager({
 
             type="file"
 
-            accept=".pdf,.txt,.md,.markdown"
+            accept=".pdf,.txt,.md,.markdown,.docx,.pptx,.xlsx"
 
             className="hidden"
 
@@ -1837,7 +1836,7 @@ function GraphEvidenceCard({ evidence, onOpen }: { evidence: TraceGraphEvidence;
       <span className="max-w-32 break-words font-mono text-[9px] text-violet-300/70"><span className="block text-zinc-700">→</span>{fact.relationship}<span className="block text-zinc-700">→</span></span>
       <span className="break-words rounded-lg bg-white/[0.04] px-3 py-3 text-sm text-zinc-200">{fact.target}</span>
     </div>
-    <p className="mt-3 truncate text-[10px] text-zinc-600">{evidence.filename ?? "Indexed document"}{evidence.page_number !== null ? ` · Page ${evidence.page_number}` : ""} · View provenance</p>
+    <p className="mt-3 truncate text-[10px] text-zinc-600">{evidence.filename ?? "Indexed document"}{evidence.source_locator?.label ? ` · ${evidence.source_locator.label}` : evidence.page_number !== null ? ` · Page ${evidence.page_number}` : ""} · View provenance</p>
   </button>;
 }
 
@@ -1850,7 +1849,7 @@ function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; o
   return <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
     <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="h-full w-full max-w-lg overflow-y-auto border-l border-white/[0.1] bg-[#090909] p-6 shadow-2xl md:p-8">
       <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[0.2em] text-violet-300/60">{evidence.kind === "graph" ? "Source graph fact" : "Source evidence"}</p><h2 id="evidence-title" className="mt-2 text-lg font-medium text-zinc-100">{evidence.filename ?? "Indexed document"}</h2></div><button type="button" onClick={onClose} aria-label="Close evidence drawer" autoFocus className="rounded-lg border border-white/[0.08] px-3 py-2 text-sm text-zinc-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">Close</button></div>
-      <div className="mt-6 flex flex-wrap gap-2 text-[10px] text-zinc-500">{evidence.page_number !== null && <span>Page {evidence.page_number}</span>}<span>{titleCase(evidence.retrieval_route)} retrieval</span>{evidence.chunk_id && <span className="font-mono">Chunk {evidence.chunk_id.slice(0, 12)}…</span>}</div>
+      <div className="mt-6 flex flex-wrap gap-2 text-[10px] text-zinc-500">{evidence.source_locator?.label ? <span>{evidence.source_locator.label}</span> : evidence.page_number !== null && <span>Page {evidence.page_number}</span>}<span>{titleCase(evidence.retrieval_route)} retrieval</span>{evidence.chunk_id && <span className="font-mono">Chunk {evidence.chunk_id.slice(0, 12)}…</span>}</div>
       {evidence.graph_fact && <div className="mt-6 rounded-xl border border-violet-400/15 bg-violet-500/[0.04] p-4"><p className="text-sm text-zinc-200">{evidence.graph_fact.source}</p><p className="my-2 font-mono text-xs text-violet-300">{evidence.graph_fact.relationship} →</p><p className="text-sm text-zinc-200">{evidence.graph_fact.target}</p></div>}
       <div className="mt-6 border-t border-white/[0.07] pt-6"><p className="whitespace-pre-wrap text-sm leading-7 text-zinc-300">{evidence.text || "No source excerpt was returned for this evidence item."}</p></div>
       {evidence.subquestion && <div className="mt-6 border-t border-white/[0.07] pt-6"><p className="text-[10px] uppercase tracking-[0.15em] text-zinc-600">Used for</p><p className="mt-2 text-sm leading-6 text-zinc-400">“{evidence.subquestion}”</p></div>}

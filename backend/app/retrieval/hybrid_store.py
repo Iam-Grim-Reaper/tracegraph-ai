@@ -356,6 +356,11 @@ class HybridStore:
                     chunk.metadata.heading
                 ),
 
+                "source_locator": (
+                    chunk.metadata.source_locator.model_dump()
+                    if chunk.metadata.source_locator else None
+                ),
+
                 "text": (
                     chunk.text
                 ),

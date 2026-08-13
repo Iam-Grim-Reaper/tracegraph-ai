@@ -169,6 +169,7 @@ def test_adaptive_retrieval_reuses_probes_and_scope(monkeypatch):
         "chunk_id": "chunk-1",
         "chunk_index": 0,
         "page_number": 1,
+        "source_locator": None,
         "retrieval_route": "hybrid",
         "relevance": 4.0,
     }

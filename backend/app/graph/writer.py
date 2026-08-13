@@ -171,6 +171,12 @@ class Neo4jGraphWriter:
                 c.page_number =
                     $page_number,
 
+                c.source_locator_type =
+                    $source_locator_type,
+
+                c.source_locator_label =
+                    $source_locator_label,
+
                 c.text =
                     $text,
 
@@ -217,6 +223,16 @@ class Neo4jGraphWriter:
 
                 "page_number": (
                     chunk.metadata.page_number
+                ),
+
+                "source_locator_type": (
+                    chunk.metadata.source_locator.type
+                    if chunk.metadata.source_locator else None
+                ),
+
+                "source_locator_label": (
+                    chunk.metadata.source_locator.label
+                    if chunk.metadata.source_locator else None
                 ),
 
                 "text": (
@@ -365,6 +381,9 @@ class Neo4jGraphWriter:
                     e.entity_type =
                         $entity_type,
 
+                    e.original_entity_type =
+                        coalesce($original_entity_type, e.original_entity_type),
+
                     e.aliases =
                         reduce(
                             acc =
@@ -431,6 +450,8 @@ class Neo4jGraphWriter:
                         .entity_type
                         .value
                     ),
+
+                    "original_entity_type": entity.original_entity_type,
 
                     "entity_label": (
                         entity

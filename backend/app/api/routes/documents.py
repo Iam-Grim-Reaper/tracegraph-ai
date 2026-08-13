@@ -38,6 +38,9 @@ SUPPORTED_EXTENSIONS = {
     ".txt",
     ".md",
     ".markdown",
+    ".docx",
+    ".pptx",
+    ".xlsx",
 }
 
 
@@ -203,7 +206,7 @@ def upload_document(
 
         File(
             description=(
-                "PDF, TXT, or Markdown "
+                "PDF, TXT, Markdown, DOCX, PPTX, or XLSX "
                 "document to index"
             )
         ),

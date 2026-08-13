@@ -265,6 +265,8 @@ class GlobalEntityResolver:
                     AS normalized_name,
                 e.entity_type
                     AS entity_type,
+                e.original_entity_type
+                    AS original_entity_type,
                 coalesce(
                     e.aliases,
                     []
@@ -323,6 +325,10 @@ class GlobalEntityResolver:
             ),
             entity_type=entity.entity_type,
             aliases=merged_aliases,
+            original_entity_type=(
+                entity.original_entity_type
+                or best_match.get("original_entity_type")
+            ),
         )
 
     def _select_best_match(
@@ -401,6 +407,9 @@ class GlobalEntityResolver:
             ),
             entity_type=first.entity_type,
             aliases=aliases,
+            original_entity_type=(
+                first.original_entity_type or second.original_entity_type
+            ),
         )
 
     def _merge_alias_values(

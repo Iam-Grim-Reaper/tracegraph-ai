@@ -22,6 +22,9 @@ class FileType(str, Enum):
     PDF = "pdf"
     TXT = "txt"
     MARKDOWN = "md"
+    DOCX = "docx"
+    PPTX = "pptx"
+    XLSX = "xlsx"
 
 
 # Stable namespaces for TraceGraph IDs.
@@ -180,10 +183,24 @@ class ParsedPage(BaseModel):
     text: str
 
 
+class SourceLocator(BaseModel):
+    type: str
+    label: str
+
+
+class ParsedUnit(BaseModel):
+    text: str
+    page_number: int | None = None
+    section: str | None = None
+    heading: str | None = None
+    source_locator: SourceLocator | None = None
+
+
 class ChunkMetadata(BaseModel):
     page_number: int | None = None
     section: str | None = None
     heading: str | None = None
+    source_locator: SourceLocator | None = None
 
 
 class DocumentChunk(BaseModel):

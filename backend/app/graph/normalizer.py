@@ -169,6 +169,7 @@ class EntityNormalizer:
                     aliases=sorted(
                         alias_values.values()
                     ),
+                    original_entity_type=canonical.original_entity_type,
                 )
             )
 
@@ -198,6 +199,7 @@ class EntityNormalizer:
             normalized_name=normalized_name,
             entity_type=candidate.entity_type,
             aliases=aliases,
+            original_entity_type=candidate.original_entity_type,
         )
 
     def normalize_entities(

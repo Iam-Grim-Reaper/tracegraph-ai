@@ -333,6 +333,7 @@ class AdaptiveEvidenceRetriever:
                     "chunk_id": chunk_id,
                     "chunk_index": payload.get("chunk_index"),
                     "page_number": payload.get("page_number"),
+                    "source_locator": payload.get("source_locator"),
                     "retrieval_route": "hybrid",
                     "relevance": score,
                 })
@@ -359,6 +360,15 @@ class AdaptiveEvidenceRetriever:
                     "chunk_id": fact.source_chunk_id,
                     "chunk_index": None,
                     "page_number": fact.page_number,
+                    "source_locator": (
+                        {
+                            "type": fact.source_locator_type,
+                            "label": fact.source_locator_label,
+                        }
+                        if fact.source_locator_label
+                        else ({"type": "page", "label": f"Page {fact.page_number}"}
+                              if fact.page_number else None)
+                    ),
                     "retrieval_route": "graph",
                     "relevance": score,
                     "graph_fact": {

@@ -457,6 +457,7 @@ export interface TraceGraphEvidence {
   chunk_id: string | null;
   chunk_index: number | null;
   page_number: number | null;
+  source_locator?: { type: string; label: string } | null;
   retrieval_route: RetrievalRoute;
   relevance: number | null;
   graph_fact?: GraphFactView;

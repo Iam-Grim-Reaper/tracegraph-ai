@@ -4,6 +4,9 @@ from app.ingestion.chunker import TextChunker
 from app.ingestion.loaders.markdown_loader import MarkdownLoader
 from app.ingestion.loaders.pdf_loader import PDFLoader
 from app.ingestion.loaders.text_loader import TextLoader
+from app.ingestion.loaders.docx_loader import DOCXLoader
+from app.ingestion.loaders.pptx_loader import PPTXLoader
+from app.ingestion.loaders.xlsx_loader import XLSXLoader
 from app.models.document import IngestionResult
 
 
@@ -16,6 +19,9 @@ class IngestionService:
         self.text_loader = TextLoader()
         self.markdown_loader = MarkdownLoader()
         self.pdf_loader = PDFLoader()
+        self.docx_loader = DOCXLoader()
+        self.pptx_loader = PPTXLoader()
+        self.xlsx_loader = XLSXLoader()
 
     def ingest(
         self,
@@ -54,6 +60,15 @@ class IngestionService:
                 document=document,
                 pages=pages,
             )
+
+        elif suffix in {".docx", ".pptx", ".xlsx"}:
+            loader = {
+                ".docx": self.docx_loader,
+                ".pptx": self.pptx_loader,
+                ".xlsx": self.xlsx_loader,
+            }[suffix]
+            document, units = loader.load(path)
+            chunks = self.chunker.chunk_units(document, units)
 
         else:
             raise ValueError(

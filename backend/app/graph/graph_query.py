@@ -37,6 +37,8 @@ class GraphFact:
     page_number: int | None
 
     source_text: str | None
+    source_locator_type: str | None = None
+    source_locator_label: str | None = None
 
 
 @dataclass
@@ -376,6 +378,8 @@ class GraphQueryRetriever:
                                 "source_text"
                             ]
                         ),
+                        source_locator_type=row.get("source_locator_type"),
+                        source_locator_label=row.get("source_locator_label"),
                     )
                 )
 
@@ -519,7 +523,13 @@ class GraphQueryRetriever:
                     AS page_number,
 
                 chunk.text
-                    AS source_text
+                    AS source_text,
+
+                chunk.source_locator_type
+                    AS source_locator_type,
+
+                chunk.source_locator_label
+                    AS source_locator_label
 
             LIMIT $limit
             """.replace(
@@ -578,7 +588,9 @@ class GraphQueryRetriever:
                 relationship.source_document_id AS source_document_id,
                 relationship.source_chunk_id AS source_chunk_id,
                 relationship.page_number AS page_number,
-                chunk.text AS source_text
+                chunk.text AS source_text,
+                chunk.source_locator_type AS source_locator_type,
+                chunk.source_locator_label AS source_locator_label
             LIMIT $limit
             """,
             {
