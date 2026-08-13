@@ -134,6 +134,22 @@ export interface TraceGraphRequest {
 }
 
 
+export type ChatStreamEventType =
+  | "started" | "routing" | "retrieval" | "decomposition"
+  | "subquestion" | "research" | "verification" | "completed" | "error";
+
+
+export interface ChatStreamEvent {
+  type: ChatStreamEventType;
+  request_id: string;
+  message: string;
+  status: string | null;
+  route: string | null;
+  id: string | null;
+  response: TraceGraphResponse | null;
+}
+
+
 interface ApiErrorResponse {
   detail?: string;
 }
@@ -246,6 +262,55 @@ export async function askTraceGraph(
   return (
     (await response.json()) as TraceGraphResponse
   );
+}
+
+
+export async function streamTraceGraph(
+  question: string,
+  documentIds: string[] | undefined,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<TraceGraphResponse> {
+  const trimmedQuestion = question.trim();
+  if (!trimmedQuestion) throw new Error("Question cannot be empty.");
+  const normalizedDocumentIds = normalizeDocumentIds(documentIds);
+  const body: TraceGraphRequest = { question: trimmedQuestion };
+  if (normalizedDocumentIds.length) body.document_ids = normalizedDocumentIds;
+
+  const response = await fetch(`${API_URL}/api/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(await readApiError(response, "TraceGraph could not start live execution."));
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed: TraceGraphResponse | null = null;
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (!frame || frame.startsWith(":")) continue;
+      const data = frame.split("\n").find((line) => line.startsWith("data: "));
+      if (!data) continue;
+      const event = JSON.parse(data.slice(6)) as ChatStreamEvent;
+      onEvent(event);
+      if (event.type === "error") throw new Error(event.message);
+      if (event.type === "completed" && event.response) completed = event.response;
+    }
+    if (done) break;
+  }
+  if (!completed) {
+    throw new Error("The live execution stream ended before verification completed. You can retry the question.");
+  }
+  return completed;
 }
 
 

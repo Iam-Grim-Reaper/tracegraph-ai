@@ -40,33 +40,9 @@ class TraceGraphService:
             list[str] | None
         ) = None,
     ) -> dict:
-        question = (
-            question.strip()
+        question, normalized_document_ids = self._prepare_request(
+            question, document_ids
         )
-
-        if not question:
-            raise ValueError(
-                "Question cannot be empty"
-            )
-
-        normalized_document_ids = (
-            self._normalize_document_ids(
-                document_ids
-            )
-        )
-
-        # -----------------------------------------
-        # Validate requested documents.
-        #
-        # This prevents a typo or stale frontend
-        # state from silently producing an empty
-        # retrieval result.
-        # -----------------------------------------
-
-        if normalized_document_ids:
-            self._validate_document_ids(
-                normalized_document_ids
-            )
 
         print(
             "TraceGraph question:",
@@ -101,6 +77,108 @@ class TraceGraphService:
             )
         )
 
+        return self._serialize_result(result, normalized_document_ids)
+
+    def stream_events(self, question, document_ids=None, cancelled=None):
+        question, normalized_document_ids = self._prepare_request(
+            question, document_ids
+        )
+        state = {
+            "question": question,
+            "document_ids": normalized_document_ids,
+            "retry_count": 0,
+        }
+        yielded_research_start = False
+        yielded_verification_start = False
+
+        for update in self.workflow.stream(state, stream_mode="updates"):
+            if cancelled is not None and cancelled.is_set():
+                return
+            for node_name, values in update.items():
+                if not isinstance(values, dict):
+                    continue
+                state.update(values)
+                if node_name in {
+                    "adaptive_retrieval", "hybrid_retrieval",
+                    "graph_retrieval", "fused_retrieval",
+                }:
+                    yield {
+                        "type": "retrieval", "status": "complete",
+                        "message": "Textual and graph evidence were evaluated.",
+                    }
+                    yield {
+                        "type": "routing", "status": "complete",
+                        "route": state.get("retrieval_route"),
+                        "message": state.get("routing_reason")
+                        or "A grounded retrieval strategy was selected.",
+                    }
+                    if state.get("decomposition_used"):
+                        yield {
+                            "type": "decomposition", "status": "complete",
+                            "message": "The question was divided into focused retrieval steps.",
+                        }
+                        for item in state.get("subquestions", []):
+                            yield {
+                                "type": "subquestion",
+                                "id": item.get("id"),
+                                "route": item.get("route"),
+                                "status": "complete" if item.get("route") else "limited",
+                                "message": item.get("question", "Sub-question complete."),
+                            }
+                    yielded_research_start = True
+                    yield {
+                        "type": "research", "status": "started",
+                        "message": "Synthesizing a grounded answer.",
+                    }
+                elif node_name == "research_agent":
+                    if not yielded_research_start:
+                        yield {
+                            "type": "research", "status": "started",
+                            "message": "Synthesizing a grounded answer.",
+                        }
+                    yield {
+                        "type": "research", "status": "complete",
+                        "message": "Grounded synthesis is ready for verification.",
+                    }
+                    yielded_verification_start = True
+                    yield {
+                        "type": "verification", "status": "started",
+                        "message": "Checking every supported claim.",
+                    }
+                elif node_name == "verification_agent":
+                    if not yielded_verification_start:
+                        yield {
+                            "type": "verification", "status": "started",
+                            "message": "Checking every supported claim.",
+                        }
+                    yield {
+                        "type": "verification", "status": "complete",
+                        "message": "Verification completed.",
+                    }
+                elif node_name == "verification_retry":
+                    yield {
+                        "type": "retrieval", "status": "retrying",
+                        "message": "Retrieving additional evidence for verification.",
+                    }
+
+        if cancelled is None or not cancelled.is_set():
+            yield {
+                "type": "completed", "status": "complete",
+                "message": "TraceGraph completed the verified response.",
+                "response": self._serialize_result(state, normalized_document_ids),
+            }
+
+    def _prepare_request(self, question, document_ids):
+        question = question.strip()
+        if not question:
+            raise ValueError("Question cannot be empty")
+        normalized_document_ids = self._normalize_document_ids(document_ids)
+        if normalized_document_ids:
+            self._validate_document_ids(normalized_document_ids)
+        return question, normalized_document_ids
+
+    @staticmethod
+    def _serialize_result(result, normalized_document_ids):
         final_answer = (
             result.get(
                 "final_answer"

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import (
     BaseModel,
     Field,
@@ -82,3 +84,23 @@ class ChatResponse(BaseModel):
     document_ids: (
         list[str] | None
     ) = None
+
+
+class ChatStreamEvent(BaseModel):
+    type: Literal[
+        "started",
+        "routing",
+        "retrieval",
+        "decomposition",
+        "subquestion",
+        "research",
+        "verification",
+        "completed",
+        "error",
+    ]
+    request_id: str
+    message: str
+    status: str | None = None
+    route: str | None = None
+    id: str | None = None
+    response: ChatResponse | None = None

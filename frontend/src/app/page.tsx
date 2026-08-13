@@ -13,11 +13,12 @@ import {
 
 import {
   API_URL,
-  askTraceGraph,
+  ChatStreamEvent,
   DocumentSummary,
   getDocuments,
   TraceGraphEvidence,
   TraceGraphResponse,
+  streamTraceGraph,
   uploadDocument,
 } from "../../lib/tracegraph";
 
@@ -98,6 +99,8 @@ export default function Home() {
     useState(
       false,
     );
+  const [streamEvents, setStreamEvents] = useState<ChatStreamEvent[]>([]);
+  const streamController = useRef<AbortController | null>(null);
 
   const [error, setError] =
     useState<string | null>(
@@ -216,6 +219,8 @@ export default function Home() {
   }, [
     loadDocuments,
   ]);
+
+  useEffect(() => () => streamController.current?.abort(), []);
 
 
   const selectedDocuments =
@@ -386,8 +391,7 @@ export default function Home() {
         ).trim();
 
       if (
-        !finalQuestion ||
-        loading
+        !finalQuestion
       ) {
         return;
       }
@@ -407,31 +411,41 @@ export default function Home() {
       setResult(
         null,
       );
+      setStreamEvents([]);
+      streamController.current?.abort();
+      const controller = new AbortController();
+      streamController.current = controller;
 
       try {
         const response =
-          await askTraceGraph(
+          await streamTraceGraph(
             finalQuestion,
 
             selectedDocumentIds
               .length > 0
               ? selectedDocumentIds
               : undefined,
+            (event) => setStreamEvents((current) => [...current, event]),
+            controller.signal,
           );
 
         setResult(
           response,
         );
       } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
         setError(
           err instanceof Error
             ? err.message
             : "TraceGraph could not process the request.",
         );
       } finally {
-        setLoading(
-          false,
-        );
+        if (streamController.current === controller) {
+          setLoading(false);
+          streamController.current = null;
+        }
       }
     };
 
@@ -708,6 +722,8 @@ export default function Home() {
                 scopeLabel={
                   scopeLabel
                 }
+                events={streamEvents}
+                onStop={() => streamController.current?.abort()}
               />
             )}
 
@@ -1344,57 +1360,38 @@ function ExampleQuestions({
 
 function LoadingState({
   scopeLabel,
+  events,
+  onStop,
 }: {
   scopeLabel: string;
+  events: ChatStreamEvent[];
+  onStop: () => void;
 }) {
+  const visible = events.filter((event) => event.type !== "completed");
   return (
-    <section className="mt-8 rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6">
+    <section className="mt-8 rounded-3xl border border-white/[0.08] bg-white/[0.025] p-6" aria-live="polite" aria-label="Live TraceGraph execution">
       <div className="flex items-center gap-3">
         <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-700 border-t-violet-400" />
 
-        <div>
-          <span className="text-sm text-zinc-400">
-            TraceGraph is
-            retrieving and
-            verifying evidence...
-          </span>
+        <div className="min-w-0 flex-1">
+          <span className="text-sm text-zinc-300">Live execution</span>
 
           <p className="mt-1 text-[10px] text-zinc-700">
             Scope:{" "}
             {scopeLabel}
           </p>
         </div>
+        <button type="button" onClick={onStop} className="rounded-lg border border-white/[0.09] px-3 py-2 text-xs text-zinc-400 hover:border-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">Stop</button>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          "Route",
-          "Retrieve",
-          "Research",
-          "Verify",
-        ].map(
-          (
-            step,
-            index,
-          ) => (
-            <div
-              key={
-                step
-              }
-
-              className="rounded-xl border border-white/[0.06] bg-black/20 p-3"
-            >
-              <div className="text-[10px] text-zinc-700">
-                0
-                {index + 1}
-              </div>
-
-              <div className="mt-1 text-xs text-zinc-500">
-                {step}
-              </div>
-            </div>
-          ),
-        )}
+      <div className="mt-6 space-y-2">
+        {visible.map((event, index) => (
+          <div key={`${event.type}-${event.id ?? index}-${event.status}`} className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
+            <span className={event.status === "complete" ? "text-emerald-400" : event.status === "limited" ? "text-amber-400" : "animate-pulse text-violet-400"}>{event.status === "complete" ? "✓" : event.status === "limited" ? "!" : "●"}</span>
+            <div className="min-w-0"><p className="text-xs font-medium text-zinc-300">{event.id ? `${event.id} · ` : ""}{titleCase(event.type)}{event.route ? ` · ${titleCase(event.route)}` : ""}</p><p className="mt-1 text-[11px] leading-5 text-zinc-600">{event.message}</p></div>
+          </div>
+        ))}
+        {visible.length === 0 && <p className="text-xs text-zinc-600">Connecting to TraceGraph…</p>}
       </div>
     </section>
   );
