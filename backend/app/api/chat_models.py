@@ -49,6 +49,15 @@ class ChatResponse(BaseModel):
     hybrid_probe_latency_ms: float | None = None
     graph_probe_latency_ms: float | None = None
     adaptive_retrieval_latency_ms: float | None = None
+    decomposition_used: bool = False
+    decomposition_degraded: bool = False
+    decomposition_call_count: int = 0
+    decomposition_latency_ms: float | None = None
+    subquestion_count: int = 0
+    subquestions: list[dict] = Field(default_factory=list)
+    qdrant_call_count: int = 0
+    neo4j_call_count: int = 0
+    crossencoder_call_count: int = 0
 
     verified: bool
 

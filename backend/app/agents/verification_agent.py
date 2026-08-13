@@ -458,7 +458,7 @@ Requirements:
         """
 
         matches = re.findall(
-            r"\[(?:Graph )?Evidence \d+\]",
+            r"\[(?:Graph )?Evidence (?:[a-z]\d+-)?\d+\]",
             value,
             flags=re.IGNORECASE,
         )

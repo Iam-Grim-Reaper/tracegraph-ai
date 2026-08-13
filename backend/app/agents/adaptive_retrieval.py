@@ -118,6 +118,7 @@ class AdaptiveEvidenceRetriever:
         graph_error = None
         hybrid_latency = None
         graph_latency = None
+        neo4j_call_count = 1
 
         def hybrid_probe():
             probe_started = perf_counter()
@@ -164,13 +165,14 @@ class AdaptiveEvidenceRetriever:
         # Reuse the already-scoped hybrid evidence chunks as bounded graph
         # provenance seeds instead of adding vocabulary rules or scanning.
         if (
-            requires_decomposition
+            (requires_decomposition or state.get("provenance_expand", False))
             and graph_error is None
             and not graph_result.facts
             and hybrid_points
         ):
             expansion_started = perf_counter()
             try:
+                neo4j_call_count += 1
                 graph_result = self.graph_retriever.retrieve_by_chunk_ids(
                     query=question,
                     chunk_ids=[str(point.id) for point in hybrid_points],
@@ -262,6 +264,10 @@ class AdaptiveEvidenceRetriever:
             "hybrid_probe_latency_ms": hybrid_latency,
             "graph_probe_latency_ms": graph_latency,
             "adaptive_retrieval_latency_ms": (perf_counter() - started) * 1000,
+            "grounded_entities": self._grounded_entities(ranked_graph),
+            "qdrant_call_count": 1,
+            "neo4j_call_count": neo4j_call_count,
+            "crossencoder_call_count": 1 if scores else 0,
         }
 
     def _get_reranker(self):
@@ -334,3 +340,12 @@ class AdaptiveEvidenceRetriever:
         if not parts:
             parts.append("No document-scoped retrieval evidence found.")
         return "\n\n".join(parts), chunk_ids, graph_count
+
+    @staticmethod
+    def _grounded_entities(ranked_graph):
+        entities = []
+        for fact, _ in ranked_graph:
+            for name in (fact.source_name, fact.target_name):
+                if name and name not in entities:
+                    entities.append(name)
+        return entities

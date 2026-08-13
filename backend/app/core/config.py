@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     reranker_model_name: str = (
         "cross-encoder/ms-marco-MiniLM-L6-v2"
     )
+    decomposition_model: str = "gemini-3.5-flash-lite"
+    decomposition_max_subquestions: int = 3
 
     frontend_url: str = "http://localhost:3000"
 

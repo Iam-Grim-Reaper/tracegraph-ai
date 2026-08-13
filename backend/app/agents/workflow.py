@@ -10,6 +10,9 @@ from app.agents.research_agent import (
 from app.agents.adaptive_retrieval import (
     AdaptiveEvidenceRetriever,
 )
+from app.agents.query_decomposition import (
+    ConditionalDecompositionRetriever,
+)
 from app.core.config import settings
 from app.agents.retrieval_nodes import (
     RetrievalNodes,
@@ -64,7 +67,7 @@ def build_tracegraph_workflow():
     if settings.query_routing_mode == "adaptive":
         workflow.add_node(
             "adaptive_retrieval",
-            AdaptiveEvidenceRetriever(),
+            ConditionalDecompositionRetriever(),
         )
 
     workflow.add_node(

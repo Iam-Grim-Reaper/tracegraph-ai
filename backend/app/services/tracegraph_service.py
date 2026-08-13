@@ -150,6 +150,15 @@ class TraceGraphService:
             "hybrid_probe_latency_ms": result.get("hybrid_probe_latency_ms"),
             "graph_probe_latency_ms": result.get("graph_probe_latency_ms"),
             "adaptive_retrieval_latency_ms": result.get("adaptive_retrieval_latency_ms"),
+            "decomposition_used": result.get("decomposition_used", False),
+            "decomposition_degraded": result.get("decomposition_degraded", False),
+            "decomposition_call_count": result.get("decomposition_call_count", 0),
+            "decomposition_latency_ms": result.get("decomposition_latency_ms"),
+            "subquestion_count": result.get("subquestion_count", 0),
+            "subquestions": result.get("subquestions", []),
+            "qdrant_call_count": result.get("qdrant_call_count", 0),
+            "neo4j_call_count": result.get("neo4j_call_count", 0),
+            "crossencoder_call_count": result.get("crossencoder_call_count", 0),
 
             "verified": (
                 result.get(

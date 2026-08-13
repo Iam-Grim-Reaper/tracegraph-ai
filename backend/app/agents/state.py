@@ -38,6 +38,15 @@ class TraceGraphState(
     hybrid_probe_latency_ms: float | None
     graph_probe_latency_ms: float | None
     adaptive_retrieval_latency_ms: float | None
+    decomposition_used: bool
+    decomposition_degraded: bool
+    decomposition_call_count: int
+    decomposition_latency_ms: float | None
+    subquestion_count: int
+    subquestions: list[dict]
+    qdrant_call_count: int
+    neo4j_call_count: int
+    crossencoder_call_count: int
 
     # ---------------------------------
     # Research Agent
