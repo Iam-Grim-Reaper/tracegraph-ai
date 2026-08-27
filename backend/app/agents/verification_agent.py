@@ -1,6 +1,5 @@
 import re
 
-from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
@@ -8,6 +7,7 @@ from app.agents.state import (
     TraceGraphState,
 )
 from app.core.config import settings
+from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
 
 
 class VerificationDecision(BaseModel):
@@ -44,8 +44,8 @@ class VerificationAgent:
                 "GEMINI_API_KEY is not configured"
             )
 
-        self.client = genai.Client(
-            api_key=settings.gemini_api_key
+        self.client = create_gemini_client(
+            settings.provider_default_timeout_seconds
         )
 
         # Continue using the lighter model
@@ -214,8 +214,7 @@ VERIFICATION RULES
 """.strip()
 
         response = (
-            self.client.models
-            .generate_content(
+            call_with_provider_resilience(lambda: self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=(
@@ -229,7 +228,7 @@ VERIFICATION RULES
                         temperature=0.0,
                     )
                 ),
-            )
+            ))
         )
 
         if not response.text:
@@ -302,8 +301,7 @@ Requirements:
 """.strip()
 
         response = (
-            self.client.models
-            .generate_content(
+            call_with_provider_resilience(lambda: self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=(
@@ -317,7 +315,7 @@ Requirements:
                         temperature=0.0,
                     )
                 ),
-            )
+            ))
         )
 
         if not response.text:

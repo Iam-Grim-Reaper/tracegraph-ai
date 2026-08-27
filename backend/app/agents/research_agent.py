@@ -1,4 +1,3 @@
-from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
@@ -6,6 +5,7 @@ from app.agents.state import (
     TraceGraphState,
 )
 from app.core.config import settings
+from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
 
 
 class ResearchDraft(BaseModel):
@@ -32,8 +32,8 @@ class ResearchAgent:
                 "GEMINI_API_KEY is not configured"
             )
 
-        self.client = genai.Client(
-            api_key=settings.gemini_api_key
+        self.client = create_gemini_client(
+            settings.provider_default_timeout_seconds
         )
 
         # Use the separately configured model
@@ -127,8 +127,7 @@ Return:
 """.strip()
 
         response = (
-            self.client.models
-            .generate_content(
+            call_with_provider_resilience(lambda: self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=(
@@ -142,7 +141,7 @@ Return:
                         temperature=0.1,
                     )
                 ),
-            )
+            ))
         )
 
         if not response.text:

@@ -1,7 +1,10 @@
-from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.core.provider_resilience import (
+    call_with_provider_resilience,
+    create_gemini_client,
+)
 
 
 class GeminiEmbeddingService:
@@ -11,8 +14,8 @@ class GeminiEmbeddingService:
                 "GEMINI_API_KEY is not configured"
             )
 
-        self.client = genai.Client(
-            api_key=settings.gemini_api_key
+        self.client = create_gemini_client(
+            settings.provider_default_timeout_seconds
         )
 
         self.model = settings.embedding_model
@@ -72,13 +75,13 @@ class GeminiEmbeddingService:
                 for text in batch
             ]
 
-            response = self.client.models.embed_content(
+            response = call_with_provider_resilience(lambda: self.client.models.embed_content(
                 model=self.model,
                 contents=contents,
                 config=types.EmbedContentConfig(
                     output_dimensionality=self.dimensions,
                 ),
-            )
+            ))
 
             if not response.embeddings:
                 raise RuntimeError(
@@ -130,13 +133,13 @@ class GeminiEmbeddingService:
         self,
         text: str,
     ) -> list[float]:
-        response = self.client.models.embed_content(
+        response = call_with_provider_resilience(lambda: self.client.models.embed_content(
             model=self.model,
             contents=text,
             config=types.EmbedContentConfig(
                 output_dimensionality=self.dimensions,
             ),
-        )
+        ))
 
         if not response.embeddings:
             raise RuntimeError(

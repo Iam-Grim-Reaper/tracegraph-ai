@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     "gemini-3.5-flash-lite"
     )
 
+    provider_max_attempts: int = 3
+    provider_default_timeout_seconds: float = 60.0
+    provider_long_timeout_seconds: float = 120.0
+    provider_retry_base_delay_seconds: float = 0.5
+    provider_retry_max_delay_seconds: float = 2.0
+
 
     # Qdrant
     qdrant_url: str | None = None

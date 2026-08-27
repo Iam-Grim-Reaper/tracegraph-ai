@@ -1,8 +1,10 @@
 import json
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app.main import app
+from app.services.document_catalog_service import DocumentCatalogService
 from app.services.tracegraph_service import TraceGraphService
 
 
@@ -42,7 +44,16 @@ def service(complex_query=False):
     return instance
 
 
-def test_service_event_order_and_verified_answer_is_terminal():
+@pytest.fixture
+def empty_document_catalog(monkeypatch):
+    monkeypatch.setattr(
+        DocumentCatalogService,
+        "list_documents",
+        lambda self: [],
+    )
+
+
+def test_service_event_order_and_verified_answer_is_terminal(empty_document_catalog):
     instance = service()
     events = list(instance.stream_events("question", ["doc-1"]))
     assert [event["type"] for event in events] == [
@@ -55,7 +66,9 @@ def test_service_event_order_and_verified_answer_is_terminal():
     assert not any(event["type"] == "decomposition" for event in events)
 
 
-def test_complex_service_events_include_decomposition_and_subquestions():
+def test_complex_service_events_include_decomposition_and_subquestions(
+    empty_document_catalog,
+):
     events = list(service(True).stream_events("complex question"))
     assert [event["type"] for event in events].count("decomposition") == 1
     subquestions = [event for event in events if event["type"] == "subquestion"]

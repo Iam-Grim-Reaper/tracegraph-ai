@@ -1,13 +1,13 @@
 import re
 from time import perf_counter
 
-from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field, model_validator
 
 from app.agents.adaptive_retrieval import AdaptiveEvidenceRetriever
 from app.agents.state import TraceGraphState
 from app.core.config import settings
+from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
 
 
 class SubQuestion(BaseModel):
@@ -33,7 +33,9 @@ class QueryDecomposer:
     def __init__(self, client=None):
         if client is None and not settings.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is not configured")
-        self.client = client or genai.Client(api_key=settings.gemini_api_key)
+        self.client = client or create_gemini_client(
+            settings.provider_default_timeout_seconds
+        )
 
     def decompose(self, question: str) -> DecompositionPlan:
         prompt = f"""
@@ -50,7 +52,7 @@ Rules:
 - Dependencies may reference only earlier IDs.
 - Return only the structured result. Do not provide reasoning or answers.
 """.strip()
-        response = self.client.models.generate_content(
+        response = call_with_provider_resilience(lambda: self.client.models.generate_content(
             model=settings.decomposition_model,
             contents=prompt,
             config=types.GenerateContentConfig(
@@ -58,7 +60,7 @@ Rules:
                 response_schema=DecompositionPlan,
                 temperature=0.0,
             ),
-        )
+        ))
         if not response.text:
             raise RuntimeError("Decomposer returned an empty response")
         plan = DecompositionPlan.model_validate_json(response.text)

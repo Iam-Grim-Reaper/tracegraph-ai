@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
+from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
 from app.graph.ontology import (
     OntologyProfile,
     compose_ontology_profiles,
@@ -759,10 +759,8 @@ class OntologyClassifier:
                 "GEMINI_API_KEY is not configured"
             )
 
-        client = genai.Client(
-            api_key=(
-                settings.gemini_api_key
-            )
+        client = create_gemini_client(
+            settings.provider_default_timeout_seconds
         )
 
         model = (
@@ -849,7 +847,7 @@ RULES
 """.strip()
 
         response = (
-            client.models.generate_content(
+            call_with_provider_resilience(lambda: client.models.generate_content(
                 model=model,
                 contents=prompt,
                 config=(
@@ -862,7 +860,7 @@ RULES
                         ),
                     )
                 ),
-            )
+            ))
         )
 
         if not response.text:
