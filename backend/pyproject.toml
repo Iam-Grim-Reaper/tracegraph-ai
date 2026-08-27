@@ -19,11 +19,22 @@ dependencies = [
     "python-pptx>=1.0.2",
     "qdrant-client>=1.19.0",
     "sentence-transformers>=5.7.0",
+    "torch==2.13.0",
     "uvicorn>=0.52.1",
 ]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "platform_system == 'Linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [

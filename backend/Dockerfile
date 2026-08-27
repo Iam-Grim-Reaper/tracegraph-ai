@@ -20,6 +20,7 @@ COPY pyproject.toml uv.lock README.md ./
 
 RUN uv sync --frozen --no-dev --no-install-project \
     && HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 .venv/bin/python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L6-v2').save('/app/models/reranker')" \
+    && rm -rf /root/.cache/uv /root/.cache/huggingface \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/runtime/cache/graph_extractions \
     && chown -R appuser:appuser /app/runtime /app/models
