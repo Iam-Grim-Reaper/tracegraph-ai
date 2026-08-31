@@ -1,8 +1,13 @@
 from dataclasses import dataclass
+import logging
 
 from sentence_transformers import CrossEncoder
 
 from app.core.config import settings
+from app.core.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -21,9 +26,7 @@ class CrossEncoderReranker:
             or settings.reranker_model_name
         )
 
-        print(
-            f"Loading reranker: {self.model_name}"
-        )
+        log_event(logger, logging.INFO, "reranker_loading", operation="reranker_initialization", status="started", model=self.model_name)
 
         self.model = CrossEncoder(
             self.model_name

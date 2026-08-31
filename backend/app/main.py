@@ -14,9 +14,11 @@ from app.api.routes.health import (
 )
 from app.core.config import settings
 from app.core.config import Settings
+from app.core.observability import RequestContextMiddleware, configure_logging
 
 
 def create_app(app_settings: Settings = settings) -> FastAPI:
+    configure_logging(app_settings.log_level)
     application = FastAPI(
         title=app_settings.app_name,
         description="Backend API for TraceGraph AI",
@@ -31,6 +33,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
         allow_methods=["GET", "POST", "OPTIONS", "DELETE"],
         allow_headers=["Content-Type", "Authorization"],
     )
+    application.add_middleware(RequestContextMiddleware)
 
     application.include_router(health_router)
     application.include_router(chat_router)

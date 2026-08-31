@@ -1,4 +1,6 @@
 import re
+import logging
+from time import perf_counter
 
 from google.genai import types
 from pydantic import BaseModel
@@ -8,6 +10,10 @@ from app.agents.state import (
 )
 from app.core.config import settings
 from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
+from app.core.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 class VerificationDecision(BaseModel):
@@ -355,9 +361,7 @@ Requirements:
             "",
         )
 
-        print(
-            "Executing VERIFICATION agent..."
-        )
+        started = perf_counter()
 
         decision = self.verify(
             question=original_question,
@@ -366,6 +370,7 @@ Requirements:
                 research_context
             ),
         )
+        log_event(logger, logging.INFO, "verification_completed", operation="verification", status="complete", verified=decision.passed, latency_ms=round((perf_counter() - started) * 1000, 3))
 
         return {
             "verification_passed": (
@@ -411,10 +416,7 @@ Requirements:
             0,
         )
 
-        print(
-            "Rewriting query for one "
-            "verification retry..."
-        )
+        started = perf_counter()
 
         rewritten_question = self.rewrite(
             question=original_question,
@@ -426,6 +428,7 @@ Requirements:
                 unsupported_claims
             ),
         )
+        log_event(logger, logging.INFO, "verification_rewrite_completed", operation="verification_rewrite", status="complete", latency_ms=round((perf_counter() - started) * 1000, 3))
 
         return {
             "rewritten_question": (

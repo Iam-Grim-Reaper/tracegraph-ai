@@ -1,6 +1,9 @@
+import logging
+
 from app.agents.state import (
     TraceGraphState,
 )
+from app.core.observability import log_event
 from app.graph.graph_query import (
     GraphQueryRetriever,
 )
@@ -19,6 +22,9 @@ from app.retrieval.hybrid_store import (
 from app.retrieval.reranker import (
     CrossEncoderReranker,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class RetrievalNodes:
@@ -87,15 +93,7 @@ class RetrievalNodes:
             "document_ids"
         )
 
-        print(
-            "Executing HYBRID retrieval..."
-        )
-
-        if document_ids:
-            print(
-                "Document scope:",
-                document_ids,
-            )
+        log_event(logger, logging.INFO, "retrieval_started", operation="retrieval", status="started", route="hybrid", document_scope_count=len(document_ids or []))
 
         query_vector = (
             self.embedding_service
@@ -224,15 +222,7 @@ class RetrievalNodes:
             "document_ids"
         )
 
-        print(
-            "Executing GRAPH retrieval..."
-        )
-
-        if document_ids:
-            print(
-                "Document scope:",
-                document_ids,
-            )
+        log_event(logger, logging.INFO, "retrieval_started", operation="retrieval", status="started", route="graph", document_scope_count=len(document_ids or []))
 
         result = (
             self.graph_retriever
@@ -293,15 +283,7 @@ class RetrievalNodes:
             "document_ids"
         )
 
-        print(
-            "Executing FUSED retrieval..."
-        )
-
-        if document_ids:
-            print(
-                "Document scope:",
-                document_ids,
-            )
+        log_event(logger, logging.INFO, "retrieval_started", operation="retrieval", status="started", route="fused", document_scope_count=len(document_ids or []))
 
         retriever = (
             self._get_fused_retriever()

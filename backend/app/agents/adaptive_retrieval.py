@@ -1,15 +1,20 @@
 import re
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from time import perf_counter
 
 from app.agents.state import RetrievalRoute, TraceGraphState
 from app.core.config import settings
+from app.core.observability import log_event
 from app.graph.graph_query import GraphFact, GraphQueryResult, GraphQueryRetriever
 from app.graph.store import Neo4jGraphStore
 from app.retrieval.embeddings import GeminiEmbeddingService
 from app.retrieval.hybrid_store import HybridStore
 from app.retrieval.reranker import CrossEncoderReranker
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -242,7 +247,8 @@ class AdaptiveEvidenceRetriever:
             ranked_graph,
         )
 
-        return {
+        latency_ms = (perf_counter() - started) * 1000
+        result = {
             "retrieval_route": decision.route,
             "initial_route": decision.route,
             "final_route": decision.route,
@@ -263,13 +269,26 @@ class AdaptiveEvidenceRetriever:
             "query_embedding_call_count": 1,
             "hybrid_probe_latency_ms": hybrid_latency,
             "graph_probe_latency_ms": graph_latency,
-            "adaptive_retrieval_latency_ms": (perf_counter() - started) * 1000,
+            "adaptive_retrieval_latency_ms": latency_ms,
             "grounded_entities": self._grounded_entities(ranked_graph),
             "qdrant_call_count": 1,
             "neo4j_call_count": neo4j_call_count,
             "crossencoder_call_count": 1 if scores else 0,
             "evidence_items": evidence_items,
         }
+        log_event(
+            logger,
+            logging.INFO,
+            "adaptive_retrieval_completed",
+            operation="adaptive_retrieval",
+            status="complete",
+            route=decision.route,
+            hybrid_evidence_count=len(ranked_hybrid),
+            graph_evidence_count=len(ranked_graph),
+            degraded=degraded,
+            latency_ms=round(latency_ms, 3),
+        )
+        return result
 
     def _get_reranker(self):
         if self._reranker is None:

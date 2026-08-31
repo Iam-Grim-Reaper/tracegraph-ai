@@ -1,9 +1,11 @@
 import re
+import logging
 
 from google.genai import types
 
 from app.core.config import settings
 from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
+from app.core.observability import log_event
 from app.graph.models import (
     ExtractedGraph,
     GraphExtractionBatch,
@@ -22,6 +24,9 @@ from app.models.document import (
     Document,
     DocumentChunk,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class GraphExtractor:
@@ -163,14 +168,7 @@ class GraphExtractor:
                 start // batch_size
             ) + 1
 
-            print(
-                f"Extracting graph batch "
-                f"{batch_number}/"
-                f"{total_batches} "
-                f"({len(batch)} chunks) "
-                f"using ontology="
-                f"{self.ontology_profile.name}..."
-            )
+            log_event(logger, logging.INFO, "graph_extraction_batch_started", operation="graph_extraction", status="in_progress", document_id=str(document.id), chunk_count=len(batch), ontology_profile=self.ontology_profile.name)
 
             result = (
                 self._extract_batch(
@@ -519,14 +517,7 @@ GENERAL RULES:
             if isinstance(value, EntityType) and value in allowed:
                 return value, None
             original = value.value if isinstance(value, EntityType) else value
-            print(
-                "ontology_entity_type_fallback",
-                f"document_id={document_id}",
-                f"active_ontology={self.ontology_profile.name}",
-                f"entity_name={entity_name}",
-                f"original_type={original}",
-                f"normalized_type={fallback.value}",
-            )
+            log_event(logger, logging.WARNING, "ontology_entity_type_fallback", operation="graph_extraction", status="degraded", document_id=document_id, ontology_profile=self.ontology_profile.name, degraded=True)
             return fallback, original
 
         normalized_entities = []
@@ -948,15 +939,7 @@ GENERAL RULES:
                         relationship_identity
                     )
 
-                    print(
-                        "Added deterministic "
-                        "citation relationship "
-                        f"in chunk "
-                        f"{chunk.chunk_index}: "
-                        f"{artifact.name} "
-                        "DEVELOPED_BY "
-                        f"{person.name}"
-                    )
+                    log_event(logger, logging.INFO, "deterministic_relationship_added", operation="graph_extraction", status="in_progress", chunk_index=chunk.chunk_index, relationship_count=1)
 
         return augmented
 
@@ -1076,13 +1059,15 @@ GENERAL RULES:
                         )
                     )
 
-                print(
-                    "Dropping malformed graph "
-                    "relationship in chunk "
-                    f"{chunk_index}: "
-                    f"{relationship.relationship_type.value} "
-                    "| missing "
-                    f"{', '.join(missing_endpoints)}"
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "graph_relationship_rejected",
+                    operation="graph_extraction",
+                    status="rejected",
+                    document_id=document_id,
+                    chunk_index=chunk_index,
+                    error_type="missing_relationship_endpoint",
                 )
 
                 continue

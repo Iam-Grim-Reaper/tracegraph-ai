@@ -1,5 +1,7 @@
 from dataclasses import dataclass
+import logging
 
+from app.core.observability import log_event
 from app.graph.entity_resolver import (
     GlobalEntityResolver,
 )
@@ -26,6 +28,9 @@ from app.models.document import (
     Document,
     DocumentChunk,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -103,15 +108,7 @@ class GraphIndexer:
                 "document with no chunks"
             )
 
-        print(
-            "Active ontology:",
-            self.ontology_profile.name,
-        )
-
-        print(
-            "Ontology version:",
-            self.ontology_profile.version,
-        )
+        log_event(logger, logging.INFO, "graph_indexing_started", operation="graph_indexing", status="started", document_id=str(document.id), chunk_count=len(chunks), ontology_profile=self.ontology_profile.name)
 
         # =================================================
         # CRITICAL ONTOLOGY INVARIANT
@@ -163,17 +160,7 @@ class GraphIndexer:
                     chunk
                 )
 
-        print(
-            "Graph cache hits:",
-            cached_count,
-        )
-
-        print(
-            "Graph chunks requiring extraction:",
-            len(
-                missing_chunks
-            ),
-        )
+        log_event(logger, logging.INFO, "graph_extraction_planned", operation="graph_indexing", status="in_progress", document_id=str(document.id), chunk_count=len(missing_chunks))
 
         # -------------------------------------------------
         # 2. Extract only chunks missing from
@@ -213,11 +200,7 @@ class GraphIndexer:
                     // self.batch_size
                 ) + 1
 
-                print(
-                    "Graph extraction batch "
-                    f"{batch_number}/"
-                    f"{total_batches}"
-                )
+                log_event(logger, logging.INFO, "graph_extraction_batch_started", operation="graph_indexing", status="in_progress", document_id=str(document.id), chunk_count=len(batch))
 
                 batch_results = (
                     extractor.extract_chunks(
@@ -365,11 +348,7 @@ class GraphIndexer:
                     .rejected_relationships
                 )
 
-                print(
-                    "Graph indexed chunk "
-                    f"{number}/"
-                    f"{len(chunks)}"
-                )
+                log_event(logger, logging.INFO, "graph_chunk_indexed", operation="graph_indexing", status="in_progress", document_id=str(document.id), chunk_count=number)
 
             # -------------------------------------------------
             # 4. Stored-document statistics

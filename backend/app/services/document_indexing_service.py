@@ -1,4 +1,5 @@
 import json
+import logging
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,10 @@ from app.retrieval.hybrid_indexer import (
 )
 from app.services.document_catalog_service import DocumentCatalogService
 from app.services.document_readiness_service import DocumentReadinessService
+from app.core.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -146,21 +151,11 @@ class DocumentIndexingService:
                 f"{path}"
             )
 
-        print("=" * 70)
-
-        print(
-            "TRACEGRAPH DOCUMENT INDEX"
-        )
-
-        print("=" * 70)
-
         # =========================================
         # 1. Ingestion
         # =========================================
 
-        print(
-            "\n[1/3] Ingesting document..."
-        )
+        log_event(logger, logging.INFO, "document_indexing_started", operation="document_indexing", status="started")
 
         ingestion = (
             self.ingestion_service
@@ -183,20 +178,7 @@ class DocumentIndexingService:
                 "produced no chunks"
             )
 
-        print(
-            "Document ID:",
-            document.id,
-        )
-
-        print(
-            "Filename:",
-            document.filename,
-        )
-
-        print(
-            "Chunks:",
-            len(chunks),
-        )
+        log_event(logger, logging.INFO, "document_ingested", operation="document_indexing", status="in_progress", document_id=str(document.id), chunk_count=len(chunks))
 
         # =========================================
         # Reconstruct document-level text
@@ -221,7 +203,7 @@ class DocumentIndexingService:
 
         existing = DocumentCatalogService().get_document(str(document.id))
         if existing is not None:
-            print("Document is already ready; skipping redundant indexing.")
+            log_event(logger, logging.INFO, "document_indexing_skipped", operation="document_indexing", status="complete", document_id=str(document.id), chunk_count=len(chunks))
             return DocumentIndexingResult(
                 document_id=existing.document_id,
                 filename=existing.filename,
@@ -286,11 +268,6 @@ class DocumentIndexingService:
             )
 
         else:
-            print(
-                "\nClassifying document "
-                "ontology..."
-            )
-
             ontology_classification = (
                 self.ontology_classifier
                 .classify(
@@ -307,47 +284,16 @@ class DocumentIndexingService:
                 .profile
             )
 
-        print(
-            "Selected ontology:",
-            selected_ontology.name,
+        log_event(
+            logger,
+            logging.INFO,
+            "ontology_classification_completed",
+            operation="ontology_classification",
+            status="complete",
+            document_id=str(document.id),
+            ontology_profile=selected_ontology.name,
+            classification_method=ontology_classification.method,
         )
-
-        print(
-            "Selected profiles:",
-            ontology_classification
-            .selected_profiles,
-        )
-
-        print(
-            "Ontology version:",
-            selected_ontology.version,
-        )
-
-        print(
-            "Ontology confidence:",
-            (
-                f"{ontology_classification.confidence:.2f}"
-            ),
-        )
-
-        print(
-            "Ontology selection method:",
-            ontology_classification.method,
-        )
-
-        print(
-            "Ontology reason:",
-            ontology_classification.reason,
-        )
-
-        if (
-            ontology_classification.scores
-        ):
-            print(
-                "Ontology scores:",
-                ontology_classification
-                .scores,
-            )
 
         readiness = DocumentReadinessService()
         document_id = str(document.id)
@@ -358,10 +304,6 @@ class DocumentIndexingService:
             # =========================================
             # 2. Qdrant hybrid indexing
             # =========================================
-
-            print(
-                "\n[2/3] Building hybrid index..."
-            )
 
             hybrid_indexer = (
                 HybridIndexer()
@@ -381,19 +323,11 @@ class DocumentIndexingService:
                 )
             )
 
-            print(
-                "Qdrant chunks indexed:",
-                qdrant_count,
-            )
+            log_event(logger, logging.INFO, "hybrid_indexing_completed", operation="document_indexing", status="in_progress", document_id=document_id, chunk_count=qdrant_count)
 
         # =========================================
         # 3. Neo4j graph indexing
         # =========================================
-
-            print(
-                "\n[3/3] Building "
-                "knowledge graph..."
-            )
 
             graph_indexer = (
                 GraphIndexer(
@@ -444,51 +378,17 @@ class DocumentIndexingService:
         # Complete
         # =========================================
 
-        print(
-            "\n" + "=" * 70
-        )
-
-        print(
-            "DOCUMENT READY"
-        )
-
-        print("=" * 70)
-
-        print(
-            "Document ID:",
-            document.id,
-        )
-
-        print(
-            "Ontology:",
-            selected_ontology.name,
-        )
-
-        print(
-            "Ontology version:",
-            selected_ontology.version,
-        )
-
-        print(
-            "Chunks:",
-            len(chunks),
-        )
-
-        print(
-            "Entities:",
-            graph_stats.entity_count,
-        )
-
-        print(
-            "Semantic relationships:",
-            graph_stats
-            .semantic_relationship_count,
-        )
-
-        print(
-            "Rejected relationships:",
-            graph_stats
-            .rejected_relationship_count,
+        log_event(
+            logger,
+            logging.INFO,
+            "document_indexing_completed",
+            operation="document_indexing",
+            status="complete",
+            document_id=str(document.id),
+            chunk_count=len(chunks),
+            entity_count=graph_stats.entity_count,
+            relationship_count=graph_stats.semantic_relationship_count,
+            ontology_profile=selected_ontology.name,
         )
 
         # =========================================

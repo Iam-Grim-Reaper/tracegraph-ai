@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     app_name: str = "TraceGraph AI"
     app_env: Literal["development", "test", "production"] = "development"
     debug: bool = True
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     graph_extraction_cache_dir: Path = Path(
         ".cache/graph_extractions"

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 from typing import Literal
 
 from google.genai import types
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
+from app.core.observability import log_event
 from app.graph.ontology import (
     OntologyProfile,
     compose_ontology_profiles,
@@ -14,6 +16,9 @@ from app.graph.ontology import (
 from app.models.document import (
     Document,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 OntologyName = Literal[
@@ -308,11 +313,6 @@ class OntologyClassifier:
             else 0.0
         )
 
-        print(
-            "Ontology deterministic scores:",
-            scores,
-        )
-
         # =================================================
         # 1. No specialized-domain evidence
         # =================================================
@@ -515,10 +515,14 @@ class OntologyClassifier:
                 )
 
             except Exception as exc:
-                print(
-                    "Ontology LLM classifier "
-                    "failed:",
-                    repr(exc),
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "ontology_classification_degraded",
+                    operation="ontology_classification",
+                    status="degraded",
+                    degraded=True,
+                    error_type=type(exc).__name__,
                 )
 
         # =================================================

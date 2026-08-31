@@ -1,13 +1,19 @@
+import logging
+
 from qdrant_client import (
     QdrantClient,
     models,
 )
 
 from app.core.config import settings
+from app.core.observability import log_event
 from app.models.document import (
     Document,
     DocumentChunk,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class HybridStore:
@@ -133,10 +139,7 @@ class HybridStore:
             self.ensure_status_index()
             return
 
-        print(
-            "Creating Qdrant "
-            "document_id payload index..."
-        )
+        log_event(logger, logging.INFO, "qdrant_payload_index_creating", operation="qdrant_schema", status="started")
 
         self.client.create_payload_index(
             collection_name=(

@@ -1,9 +1,16 @@
+import logging
+from time import perf_counter
+
 from app.agents.workflow import (
     build_tracegraph_workflow,
 )
 from app.services.document_catalog_service import (
     DocumentCatalogService,
 )
+from app.core.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 class TraceGraphService:
@@ -21,17 +28,13 @@ class TraceGraphService:
     def __init__(
         self,
     ):
-        print(
-            "Initializing TraceGraph workflow..."
-        )
+        log_event(logger, logging.INFO, "workflow_initializing", operation="workflow_initialization", status="started")
 
         self.workflow = (
             build_tracegraph_workflow()
         )
 
-        print(
-            "TraceGraph workflow ready."
-        )
+        log_event(logger, logging.INFO, "workflow_ready", operation="workflow_initialization", status="complete")
 
     def ask(
         self,
@@ -44,22 +47,8 @@ class TraceGraphService:
             question, document_ids
         )
 
-        print(
-            "TraceGraph question:",
-            question,
-        )
-
-        if normalized_document_ids:
-            print(
-                "TraceGraph document scope:",
-                normalized_document_ids,
-            )
-
-        else:
-            print(
-                "TraceGraph document scope: "
-                "ALL DOCUMENTS"
-            )
+        started = perf_counter()
+        log_event(logger, logging.INFO, "chat_workflow_started", operation="chat_workflow", status="started", document_scope_count=len(normalized_document_ids or []))
 
         result = (
             self.workflow.invoke(
@@ -77,7 +66,9 @@ class TraceGraphService:
             )
         )
 
-        return self._serialize_result(result, normalized_document_ids)
+        response = self._serialize_result(result, normalized_document_ids)
+        log_event(logger, logging.INFO, "chat_workflow_completed", operation="chat_workflow", status="complete", route=response.get("route"), hybrid_evidence_count=response.get("hybrid_evidence_count"), graph_evidence_count=response.get("graph_evidence_count"), degraded=response.get("degraded"), latency_ms=round((perf_counter() - started) * 1000, 3))
+        return response
 
     def stream_events(self, question, document_ids=None, cancelled=None):
         question, normalized_document_ids = self._prepare_request(

@@ -1,6 +1,11 @@
 from enum import StrEnum
+import logging
 
+from app.core.observability import log_event
 from app.graph.store import Neo4jGraphStore
+
+
+logger = logging.getLogger(__name__)
 
 
 # =========================================================
@@ -396,16 +401,11 @@ RELATIONSHIP_GUIDANCE = {
 def initialize_graph_schema(
     store: Neo4jGraphStore,
 ) -> None:
-    print(
-        "Initializing TraceGraph schema..."
-    )
+    log_event(logger, logging.INFO, "graph_schema_initializing", operation="graph_schema", status="started")
 
     for query in SCHEMA_QUERIES:
         store.query(
             query
         )
 
-    print(
-        f"Configured {len(SCHEMA_QUERIES)} "
-        "constraints/indexes."
-    )
+    log_event(logger, logging.INFO, "graph_schema_initialized", operation="graph_schema", status="complete")

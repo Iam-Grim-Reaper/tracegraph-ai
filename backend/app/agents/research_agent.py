@@ -1,3 +1,6 @@
+import logging
+from time import perf_counter
+
 from google.genai import types
 from pydantic import BaseModel
 
@@ -6,6 +9,10 @@ from app.agents.state import (
 )
 from app.core.config import settings
 from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
+from app.core.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchDraft(BaseModel):
@@ -185,9 +192,7 @@ Return:
             )
         )
 
-        print(
-            "Executing RESEARCH agent..."
-        )
+        started = perf_counter()
 
         draft = self.research(
             question=question,
@@ -198,6 +203,7 @@ Return:
                 retrieval_route
             ),
         )
+        log_event(logger, logging.INFO, "generation_completed", operation="research", status="complete", route=retrieval_route, latency_ms=round((perf_counter() - started) * 1000, 3))
 
         return {
             "draft_answer": (

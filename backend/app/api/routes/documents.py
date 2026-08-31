@@ -1,6 +1,7 @@
 import tempfile
-import traceback
+import logging
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import (
@@ -25,12 +26,14 @@ from app.services.document_catalog_service import (
 from app.services.document_indexing_service import (
     DocumentIndexingService,
 )
+from app.core.observability import log_event
 
 
 router = APIRouter(
     prefix="/api/documents",
     tags=["Documents"],
 )
+logger = logging.getLogger(__name__)
 
 
 SUPPORTED_EXTENSIONS = {
@@ -212,6 +215,8 @@ def upload_document(
         ),
     ],
 ) -> DocumentUploadResponse:
+    started = perf_counter()
+    log_event(logger, logging.INFO, "document_ingestion_started", operation="document_ingestion", status="started")
     safe_name, _ = (
         _validate_filename(
             file.filename
@@ -254,8 +259,7 @@ def upload_document(
                 )
             )
 
-        return (
-            DocumentUploadResponse(
+        response = DocumentUploadResponse(
                 document_id=(
                     result.document_id
                 ),
@@ -349,7 +353,8 @@ def upload_document(
                     .graph_extracted_chunks
                 ),
             )
-        )
+        log_event(logger, logging.INFO, "document_ingestion_completed", operation="document_ingestion", status="complete", document_id=str(result.document_id), latency_ms=round((perf_counter() - started) * 1000, 3))
+        return response
 
     except HTTPException:
         raise
@@ -397,11 +402,7 @@ def upload_document(
         ) from exc
 
     except Exception as exc:
-        traceback.print_exception(
-            type(exc),
-            exc,
-            exc.__traceback__,
-        )
+        log_event(logger, logging.ERROR, "document_ingestion_failed", operation="document_ingestion", status="failed", error_type=type(exc).__name__, latency_ms=round((perf_counter() - started) * 1000, 3))
 
         raise HTTPException(
             status_code=(

@@ -1,9 +1,15 @@
+import logging
+
 from google.genai import types
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.provider_resilience import call_with_provider_resilience, create_gemini_client
+from app.core.observability import log_event
 from app.models.document import Document, DocumentChunk
+
+
+logger = logging.getLogger(__name__)
 
 
 class ChunkContext(BaseModel):
@@ -70,10 +76,7 @@ class Contextualizer:
                 "Cannot contextualize an empty chunk list"
             )
 
-        print(
-            f"Contextualizing {len(chunks)} chunks "
-            f"in one Gemini request..."
-        )
+        log_event(logger, logging.INFO, "contextualization_started", operation="contextualization", status="started", chunk_count=len(chunks), provider="gemini", model=self.model)
 
         chunk_blocks = []
 
@@ -184,10 +187,7 @@ Requirements:
                 f"{context}\n\n{chunk.text}"
             )
 
-        print(
-            f"Successfully contextualized "
-            f"{len(chunks)} chunks."
-        )
+        log_event(logger, logging.INFO, "contextualization_completed", operation="contextualization", status="complete", chunk_count=len(chunks), provider="gemini", model=self.model)
 
         return chunks
 

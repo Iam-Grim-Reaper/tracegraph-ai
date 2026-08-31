@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import random
 import time
+import logging
 from typing import TypeVar
 
 import httpx
@@ -10,10 +11,12 @@ from google import genai
 from google.genai import errors, types
 
 from app.core.config import settings
+from app.core.observability import log_event
 
 
 T = TypeVar("T")
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+logger = logging.getLogger(__name__)
 
 
 def create_gemini_client(timeout_seconds: float) -> genai.Client:
@@ -41,7 +44,20 @@ def call_with_provider_resilience(
                 or not _is_retryable(exc)
             ):
                 raise
-            sleep(_retry_delay(exc, attempt, random_value()))
+            delay = _retry_delay(exc, attempt, random_value())
+            log_event(
+                logger,
+                logging.WARNING,
+                "provider_retry",
+                operation="provider_call",
+                provider="gemini",
+                attempt=attempt + 1,
+                status="retrying",
+                status_code=getattr(exc, "code", None),
+                error_type=type(exc).__name__,
+                delay_ms=round(delay * 1000, 3),
+            )
+            sleep(delay)
     raise AssertionError("provider attempt loop did not terminate")
 
 
