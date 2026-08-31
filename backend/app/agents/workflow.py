@@ -30,7 +30,7 @@ from app.agents.verification_agent import (
 )
 
 
-def build_tracegraph_workflow():
+def build_tracegraph_workflow(resource_owners: list[object] | None = None):
     if settings.query_routing_mode not in {
         "adaptive",
         "legacy",
@@ -64,10 +64,12 @@ def build_tracegraph_workflow():
         router,
     )
 
+    adaptive_retrieval = None
     if settings.query_routing_mode == "adaptive":
+        adaptive_retrieval = ConditionalDecompositionRetriever()
         workflow.add_node(
             "adaptive_retrieval",
-            ConditionalDecompositionRetriever(),
+            adaptive_retrieval,
         )
 
     workflow.add_node(
@@ -209,5 +211,21 @@ def build_tracegraph_workflow():
             else "retrieval_router"
         ),
     )
+
+    if resource_owners is not None:
+        resource_owners.extend([
+            retrieval.embedding_service.client,
+            retrieval.hybrid_store.client,
+            retrieval.graph_store,
+            research_agent.client,
+            verification_agent.client,
+        ])
+        if adaptive_retrieval is not None:
+            resource_owners.extend([
+                adaptive_retrieval.adaptive.embedding_service.client,
+                adaptive_retrieval.adaptive.hybrid_store.client,
+                adaptive_retrieval.adaptive.graph_retriever.store,
+                adaptive_retrieval.decomposer.client,
+            ])
 
     return workflow.compile()

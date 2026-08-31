@@ -1,4 +1,5 @@
 import logging
+from threading import Lock
 from time import perf_counter
 
 from app.agents.workflow import (
@@ -30,11 +31,38 @@ class TraceGraphService:
     ):
         log_event(logger, logging.INFO, "workflow_initializing", operation="workflow_initialization", status="started")
 
-        self.workflow = (
-            build_tracegraph_workflow()
-        )
+        self._owned_resources: list[object] = []
+        self._close_lock = Lock()
+        self._closed = False
+        self.workflow = build_tracegraph_workflow(self._owned_resources)
 
         log_event(logger, logging.INFO, "workflow_ready", operation="workflow_initialization", status="complete")
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+
+        seen: set[int] = set()
+        for resource in self._owned_resources:
+            if id(resource) in seen:
+                continue
+            seen.add(id(resource))
+            close = getattr(resource, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except Exception as exc:
+                log_event(
+                    logger,
+                    logging.ERROR,
+                    "resource_close_failed",
+                    operation="resource_close",
+                    status="failed",
+                    error_type=type(exc).__name__,
+                )
 
     def ask(
         self,
@@ -71,6 +99,16 @@ class TraceGraphService:
         return response
 
     def stream_events(self, question, document_ids=None, cancelled=None):
+        if cancelled is not None and cancelled.is_set():
+            return
+        for payload in self._stream_events(question, document_ids, cancelled):
+            if cancelled is not None and cancelled.is_set():
+                return
+            yield payload
+            if cancelled is not None and cancelled.is_set():
+                return
+
+    def _stream_events(self, question, document_ids=None, cancelled=None):
         question, normalized_document_ids = self._prepare_request(
             question, document_ids
         )
@@ -375,6 +413,7 @@ class TraceGraphService:
 _tracegraph_service: (
     TraceGraphService | None
 ) = None
+_tracegraph_service_lock = Lock()
 
 
 def get_tracegraph_service(
@@ -386,12 +425,18 @@ def get_tracegraph_service(
 
     global _tracegraph_service
 
-    if (
-        _tracegraph_service
-        is None
-    ):
-        _tracegraph_service = (
-            TraceGraphService()
-        )
+    if _tracegraph_service is None:
+        with _tracegraph_service_lock:
+            if _tracegraph_service is None:
+                _tracegraph_service = TraceGraphService()
 
     return _tracegraph_service
+
+
+def close_tracegraph_service() -> None:
+    global _tracegraph_service
+    with _tracegraph_service_lock:
+        service = _tracegraph_service
+        _tracegraph_service = None
+    if service is not None:
+        service.close()

@@ -23,6 +23,7 @@ from app.services.tracegraph_service import (
     get_tracegraph_service,
 )
 from app.core.observability import log_event, run_with_request_id
+from app.core.lifecycle import StreamWorker, stream_workers
 
 
 router = APIRouter(
@@ -42,10 +43,20 @@ async def chat_stream(request_body: ChatRequest, request: Request):
     queue: asyncio.Queue = asyncio.Queue()
     cancelled = Event()
     loop = asyncio.get_running_loop()
+    terminal_event_type: str | None = None
 
     def publish(payload):
+        nonlocal terminal_event_type
+        if cancelled.is_set():
+            return False
+        event_type = payload.get("type")
+        if event_type in {"completed", "error"}:
+            if terminal_event_type is not None:
+                return False
+            terminal_event_type = event_type
         event = ChatStreamEvent(request_id=request_id, **payload)
         loop.call_soon_threadsafe(queue.put_nowait, event)
+        return True
 
     def execute_stream():
         started = perf_counter()
@@ -60,28 +71,42 @@ async def chat_stream(request_body: ChatRequest, request: Request):
                 if cancelled.is_set():
                     break
                 publish(payload)
-            log_event(logger, logging.INFO, "stream_completed", operation="chat_stream", status="complete", latency_ms=round((perf_counter() - started) * 1000, 3))
+                if payload.get("type") in {"completed", "error"}:
+                    break
+            if cancelled.is_set():
+                log_event(logger, logging.INFO, "stream_worker_cancelled", operation="chat_stream", status="cancelled", latency_ms=round((perf_counter() - started) * 1000, 3))
+            else:
+                log_event(logger, logging.INFO, "stream_completed", operation="chat_stream", status="complete", latency_ms=round((perf_counter() - started) * 1000, 3))
         except Exception as exc:
             log_event(logger, logging.ERROR, "stream_error", operation="chat_stream", status="failed", error_type=type(exc).__name__, latency_ms=round((perf_counter() - started) * 1000, 3))
-            publish({
-                "type": "error",
-                "status": "failed",
-                "message": "TraceGraph could not complete this request.",
-            })
+            if not cancelled.is_set():
+                publish({
+                    "type": "error",
+                    "status": "failed",
+                    "message": "TraceGraph could not complete this request.",
+                })
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, None)
 
     def run():
-        run_with_request_id(request_id, execute_stream)
+        try:
+            run_with_request_id(request_id, execute_stream)
+        finally:
+            stream_workers.unregister(worker)
+
+    worker = Thread(target=run, daemon=True)
 
     async def events():
+        if not stream_workers.register(StreamWorker(request_id, cancelled, worker)):
+            cancelled.set()
+            return
+        worker.start()
         yield _sse(ChatStreamEvent(
             type="started",
             request_id=request_id,
             status="started",
             message="Understanding the question.",
         ))
-        Thread(target=run, daemon=True).start()
         try:
             while True:
                 if await request.is_disconnected():

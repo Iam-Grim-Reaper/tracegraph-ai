@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     debug: bool = True
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    stream_shutdown_timeout_seconds: float = Field(default=5.0, ge=0, le=30)
 
     graph_extraction_cache_dir: Path = Path(
         ".cache/graph_extractions"

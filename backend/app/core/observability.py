@@ -15,6 +15,7 @@ _request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
 T = TypeVar("T")
 
 SAFE_STRUCTURED_FIELDS = frozenset({
+    "active_worker_count",
     "attempt",
     "chunk_count",
     "chunk_index",
@@ -34,11 +35,13 @@ SAFE_STRUCTURED_FIELDS = frozenset({
     "operation",
     "provider",
     "relationship_count",
+    "remaining_worker_count",
     "request_id",
     "route",
     "status",
     "status_code",
     "verified",
+    "workers_stopped",
 })
 
 
