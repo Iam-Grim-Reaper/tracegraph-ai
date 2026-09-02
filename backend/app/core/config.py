@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     decomposition_max_subquestions: int = Field(default=3, ge=2, le=3)
 
     office_max_archive_uncompressed_bytes: int = Field(
-        default=100 * 1024 * 1024, gt=0
+        default=100 * 1024 * 1024,
+        gt=0,
     )
     office_max_archive_entries: int = Field(default=5000, gt=0)
     xlsx_max_worksheets: int = Field(default=20, gt=0)
@@ -51,21 +52,25 @@ class Settings(BaseSettings):
     xlsx_max_non_empty_cells: int = Field(default=100000, gt=0)
     office_max_extracted_chars: int = Field(default=2_000_000, gt=0)
 
+    # Frontend / CORS
     frontend_url: str = "http://localhost:3000"
     cors_allowed_origins: str | None = None
-    public_uploads_enabled: bool = True
+
+    # Uploads are disabled by default.
+    # Production can explicitly enable them with:
+    # PUBLIC_UPLOADS_ENABLED=true
+    public_uploads_enabled: bool = False
 
     # Gemini
     gemini_api_key: str | None = None
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, gt=0, le=4096)
 
-
     generation_model: str = "gemini-3.6-flash"
     contextualization_model: str = "gemini-3.5-flash-lite"
 
     graph_extraction_model: str = (
-    "gemini-3.5-flash-lite"
+        "gemini-3.5-flash-lite"
     )
 
     provider_max_attempts: int = Field(default=3, ge=1, le=3)
@@ -73,7 +78,6 @@ class Settings(BaseSettings):
     provider_long_timeout_seconds: float = Field(default=120.0, gt=0)
     provider_retry_base_delay_seconds: float = Field(default=0.5, ge=0)
     provider_retry_max_delay_seconds: float = Field(default=2.0, ge=0)
-
 
     # Qdrant
     qdrant_url: str | None = None
@@ -89,13 +93,20 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> list[str]:
         value = self.cors_allowed_origins
+
         if value is None:
             return [self.frontend_url.strip()]
-        return [origin.strip() for origin in value.split(",") if origin.strip()]
+
+        return [
+            origin.strip()
+            for origin in value.split(",")
+            if origin.strip()
+        ]
 
     @model_validator(mode="after")
     def validate_environment(self):
         explicit_debug = "debug" in self.model_fields_set
+
         if self.app_env in {"test", "production"} and not explicit_debug:
             object.__setattr__(self, "debug", False)
 
@@ -116,11 +127,6 @@ class Settings(BaseSettings):
                 "Invalid production setting: DEBUG must be false"
             )
 
-        if self.public_uploads_enabled:
-            raise ProductionConfigurationError(
-                "Invalid production setting: PUBLIC_UPLOADS_ENABLED must be false"
-            )
-
         required = {
             "GEMINI_API_KEY": self.gemini_api_key,
             "QDRANT_URL": self.qdrant_url,
@@ -133,10 +139,21 @@ class Settings(BaseSettings):
             "RERANKER_MODEL_NAME": self.reranker_model_name,
             "CORS_ALLOWED_ORIGINS": self.cors_allowed_origins,
         }
-        placeholders = {"change-me", "changeme", "placeholder", "replace-me"}
+
+        placeholders = {
+            "change-me",
+            "changeme",
+            "placeholder",
+            "replace-me",
+        }
+
         for name, value in required.items():
             normalized = str(value or "").strip()
-            if not normalized or normalized.casefold() in placeholders:
+
+            if (
+                not normalized
+                or normalized.casefold() in placeholders
+            ):
                 raise ProductionConfigurationError(
                     f"Missing required production setting: {name}"
                 )
@@ -145,6 +162,7 @@ class Settings(BaseSettings):
             raise ProductionConfigurationError(
                 "Invalid production setting: CORS_ALLOWED_ORIGINS"
             )
+
         return self
 
     model_config = SettingsConfigDict(
