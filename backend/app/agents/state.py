@@ -35,8 +35,13 @@ class TraceGraphState(
     degraded: bool
     degradation_reason: str | None
     query_embedding_call_count: int
+    query_embedding_latency_ms: float | None
     hybrid_probe_latency_ms: float | None
     graph_probe_latency_ms: float | None
+    reranker_latency_ms: float | None
+    reranker_input_count: int | None
+    reranker_total_chars: int | None
+    reranker_max_chars: int | None
     adaptive_retrieval_latency_ms: float | None
     decomposition_used: bool
     decomposition_degraded: bool

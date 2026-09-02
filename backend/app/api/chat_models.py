@@ -48,8 +48,13 @@ class ChatResponse(BaseModel):
     degraded: bool = False
     degradation_reason: str | None = None
     query_embedding_call_count: int = 0
+    query_embedding_latency_ms: float | None = None
     hybrid_probe_latency_ms: float | None = None
     graph_probe_latency_ms: float | None = None
+    reranker_latency_ms: float | None = None
+    reranker_input_count: int | None = None
+    reranker_total_chars: int | None = None
+    reranker_max_chars: int | None = None
     adaptive_retrieval_latency_ms: float | None = None
     decomposition_used: bool = False
     decomposition_degraded: bool = False

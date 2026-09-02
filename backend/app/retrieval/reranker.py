@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 import logging
+import os
+from time import perf_counter
 
 from sentence_transformers import CrossEncoder
+import torch
 
 from app.core.config import settings
 from app.core.observability import log_event
@@ -46,30 +49,12 @@ class CrossEncoderReranker:
         if not results:
             return []
 
-        pairs = []
+        texts = [
+            (result.payload or {}).get("text", "")
+            for result in results
+        ]
 
-        for result in results:
-            payload = result.payload or {}
-
-            # Use the original source text here.
-            # Contextual text was already used during
-            # candidate retrieval.
-            text = payload.get(
-                "text",
-                "",
-            )
-
-            pairs.append(
-                (
-                    query,
-                    text,
-                )
-            )
-
-        scores = self.model.predict(
-            pairs,
-            show_progress_bar=False,
-        )
+        scores = self._score(query, texts)
 
         reranked = [
             RerankedResult(
@@ -104,12 +89,58 @@ class CrossEncoderReranker:
         if not texts:
             return []
 
-        scores = self.model.predict(
-            [(query, value) for value in texts],
-            show_progress_bar=False,
-        )
+        scores = self._score(query, texts)
 
         return [
             float(score)
             for score in scores
         ]
+
+    def _score(
+        self,
+        query: str,
+        texts: list[str],
+    ):
+        total_started = perf_counter()
+
+        pair_started = perf_counter()
+        pairs = [(query, text) for text in texts]
+        pair_construction_latency_ms = (
+            perf_counter() - pair_started
+        ) * 1000
+
+        predict_started = perf_counter()
+        scores = self.model.predict(
+            pairs,
+            show_progress_bar=False,
+        )
+        model_predict_latency_ms = (
+            perf_counter() - predict_started
+        ) * 1000
+        total_latency_ms = (
+            perf_counter() - total_started
+        ) * 1000
+
+        log_event(
+            logger,
+            logging.INFO,
+            "reranker_scored",
+            operation="reranker_scoring",
+            status="complete",
+            reranker_input_count=len(texts),
+            reranker_total_chars=sum(len(text) for text in texts),
+            reranker_max_chars=max((len(text) for text in texts), default=0),
+            pair_construction_latency_ms=round(pair_construction_latency_ms, 3),
+            # CrossEncoder.predict performs tokenization and model inference
+            # in one public call. Keeping that call intact avoids duplicate
+            # tokenization or global monkey-patching in concurrent requests.
+            model_predict_latency_ms=round(model_predict_latency_ms, 3),
+            total_latency_ms=round(total_latency_ms, 3),
+            model_max_length=getattr(self.model, "max_length", None),
+            model_device=str(getattr(self.model, "device", "unknown")),
+            cpu_count=os.cpu_count(),
+            torch_num_threads=torch.get_num_threads(),
+            torch_num_interop_threads=torch.get_num_interop_threads(),
+        )
+
+        return scores

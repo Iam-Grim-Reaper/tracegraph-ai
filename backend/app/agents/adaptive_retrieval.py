@@ -539,6 +539,17 @@ class AdaptiveEvidenceRetriever:
             reranker_input_count=len(
                 reranker_texts
             ),
+            reranker_total_chars=sum(
+                len(text)
+                for text in reranker_texts
+            ),
+            reranker_max_chars=max(
+                (
+                    len(text)
+                    for text in reranker_texts
+                ),
+                default=0,
+            ),
         )
 
         return result

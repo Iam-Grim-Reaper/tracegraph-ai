@@ -158,6 +158,15 @@ def test_adaptive_retrieval_reuses_probes_and_scope(monkeypatch):
     assert result["retrieval_route"] == "fused"
     assert embedding.calls == hybrid.calls == graph.calls == reranker.calls == 1
     assert result["query_embedding_call_count"] == 1
+    assert result["query_embedding_latency_ms"] is not None
+    assert result["reranker_latency_ms"] is not None
+    assert result["reranker_input_count"] == 2
+    assert result["reranker_total_chars"] == len("text evidence") + len(
+        AdaptiveEvidenceRetriever.verbalize_graph_fact(fact())
+    )
+    assert result["reranker_max_chars"] == len(
+        AdaptiveEvidenceRetriever.verbalize_graph_fact(fact())
+    )
     assert hybrid.document_ids == graph.document_ids == ["doc-1"]
     assert "Graph Evidence" in result["research_context"]
     assert result["evidence_items"][0] == {

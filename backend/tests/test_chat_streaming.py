@@ -22,6 +22,11 @@ class FakeWorkflow:
             "research_context": "[Evidence 1]\ntext",
             "retrieved_chunk_ids": ["chunk-1"],
             "evidence_items": [],
+            "query_embedding_latency_ms": 123.0,
+            "reranker_latency_ms": 456.0,
+            "reranker_input_count": 5,
+            "reranker_total_chars": 6789,
+            "reranker_max_chars": 2345,
             "decomposition_used": self.complex_query,
             "subquestions": ([
                 {"id": "q1", "question": "Find the method", "route": "hybrid", "evidence_count": 1},
@@ -62,6 +67,12 @@ def test_service_event_order_and_verified_answer_is_terminal(empty_document_cata
     ]
     assert all("private draft" not in json.dumps(event) for event in events[:-1])
     assert events[-1]["response"]["answer"] == "verified answer"
+    response = events[-1]["response"]
+    assert response["query_embedding_latency_ms"] == 123.0
+    assert response["reranker_latency_ms"] == 456.0
+    assert response["reranker_input_count"] == 5
+    assert response["reranker_total_chars"] == 6789
+    assert response["reranker_max_chars"] == 2345
     assert instance.workflow.input["document_ids"] == ["doc-1"]
     assert not any(event["type"] == "decomposition" for event in events)
 
