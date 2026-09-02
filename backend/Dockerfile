@@ -16,11 +16,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY --from=uv /uv /uvx /bin/
+
 COPY pyproject.toml uv.lock README.md ./
 
-RUN uv sync --frozen --no-dev --no-install-project \
-    && HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 .venv/bin/python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L6-v2').save('/app/models/reranker')" \
-    && rm -rf /root/.cache/uv /root/.cache/huggingface \
+RUN uv sync --frozen --no-dev --no-install-project
+
+RUN mkdir -p /app/models \
+    && HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 \
+       .venv/bin/python -c "from sentence_transformers import CrossEncoder; model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L6-v2'); model.save('/app/models/reranker')" \
+    && test -d /app/models/reranker \
+    && test -f /app/models/reranker/config.json \
+    && echo "Reranker model successfully baked into image" \
+    && ls -la /app/models/reranker
+
+RUN rm -rf /root/.cache/uv /root/.cache/huggingface \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/runtime/cache/graph_extractions \
     && chown -R appuser:appuser /app/runtime /app/models
