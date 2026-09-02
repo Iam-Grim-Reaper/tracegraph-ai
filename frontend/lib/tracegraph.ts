@@ -67,6 +67,8 @@ export interface DocumentListResponse {
   documents: DocumentSummary[];
 
   total: number;
+
+  uploads_enabled: boolean;
 }
 
 
@@ -158,6 +160,9 @@ interface ApiErrorResponse {
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000";
+
+export const PUBLIC_UPLOADS_ENABLED =
+  process.env.NEXT_PUBLIC_UPLOADS_ENABLED !== "false";
 
 
 async function readApiError(

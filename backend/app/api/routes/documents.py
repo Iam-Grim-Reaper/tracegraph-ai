@@ -8,6 +8,7 @@ from fastapi import (
     APIRouter,
     File,
     HTTPException,
+    Request,
     UploadFile,
     status,
 )
@@ -429,6 +430,7 @@ def upload_document(
     ),
 )
 def list_documents(
+    request: Request,
 ) -> DocumentListResponse:
     service = (
         DocumentCatalogService()
@@ -447,6 +449,8 @@ def list_documents(
             total=len(
                 documents
             ),
+
+            uploads_enabled=request.app.state.public_uploads_enabled,
         )
     )
 

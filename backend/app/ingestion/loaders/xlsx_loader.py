@@ -24,11 +24,17 @@ class XLSXLoader:
             non_empty_cells = 0
             extracted = 0
             for sheet in workbook.worksheets:
-                if sheet.max_row > settings.xlsx_max_rows_per_sheet:
+                if (
+                    sheet.max_row is not None
+                    and sheet.max_row > settings.xlsx_max_rows_per_sheet
+                ):
                     raise ValueError(
                         f"Worksheet {sheet.title} exceeds the configured row limit"
                     )
-                if sheet.max_column > settings.xlsx_max_columns:
+                if (
+                    sheet.max_column is not None
+                    and sheet.max_column > settings.xlsx_max_columns
+                ):
                     raise ValueError(
                         f"Worksheet {sheet.title} exceeds the configured column limit"
                     )

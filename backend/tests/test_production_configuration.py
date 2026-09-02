@@ -23,6 +23,7 @@ def production_values(reranker_path: Path) -> dict:
         "neo4j_database": "neo4j",
         "reranker_model_name": str(reranker_path),
         "cors_allowed_origins": "https://app.example,https://preview.example",
+        "public_uploads_enabled": False,
     }
 
 
@@ -85,6 +86,7 @@ def local_client_constructors(monkeypatch):
 def test_development_config_remains_usable():
     config = settings_for(app_env="development")
     assert config.debug is True
+    assert config.public_uploads_enabled is True
     assert config.allowed_cors_origins == ["http://localhost:3000"]
 
 
@@ -132,6 +134,13 @@ def test_production_debug_true_is_rejected(reranker_path):
     values = production_values(reranker_path)
     values["debug"] = True
     with pytest.raises(ProductionConfigurationError, match="DEBUG"):
+        settings_for(**values)
+
+
+def test_production_public_uploads_enabled_is_rejected(reranker_path):
+    values = production_values(reranker_path)
+    values["public_uploads_enabled"] = True
+    with pytest.raises(ProductionConfigurationError, match="PUBLIC_UPLOADS_ENABLED"):
         settings_for(**values)
 
 

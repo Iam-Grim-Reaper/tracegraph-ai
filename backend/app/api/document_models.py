@@ -98,3 +98,5 @@ class DocumentListResponse(
     ]
 
     total: int
+
+    uploads_enabled: bool

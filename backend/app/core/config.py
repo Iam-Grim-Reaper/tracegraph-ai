@@ -53,6 +53,7 @@ class Settings(BaseSettings):
 
     frontend_url: str = "http://localhost:3000"
     cors_allowed_origins: str | None = None
+    public_uploads_enabled: bool = True
 
     # Gemini
     gemini_api_key: str | None = None
@@ -77,8 +78,6 @@ class Settings(BaseSettings):
     # Qdrant
     qdrant_url: str | None = None
     qdrant_api_key: str | None = None
-    qdrant_collection: str = "tracegraph_chunks"
-    qdrant_contextual_collection: str = "tracegraph_chunks_contextual"
     qdrant_hybrid_collection: str = "tracegraph_chunks_hybrid"
 
     # Neo4j
@@ -115,6 +114,11 @@ class Settings(BaseSettings):
         if self.debug:
             raise ProductionConfigurationError(
                 "Invalid production setting: DEBUG must be false"
+            )
+
+        if self.public_uploads_enabled:
+            raise ProductionConfigurationError(
+                "Invalid production setting: PUBLIC_UPLOADS_ENABLED must be false"
             )
 
         required = {

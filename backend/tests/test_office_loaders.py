@@ -3,6 +3,8 @@ from openpyxl import Workbook
 from pptx import Presentation
 from pptx.util import Inches
 import pytest
+import re
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.ingestion.service import IngestionService
 from app.ingestion.loaders.xlsx_loader import XLSXLoader
@@ -52,6 +54,29 @@ def create_xlsx(path, formula=False):
     systems.append(["Atlas", "AI Systems", "=1+1" if formula else "Qdrant"])
     systems.append(["Orion", "Data Platform", "Kafka"])
     workbook.save(path)
+
+
+def create_dimensionless_xlsx(path):
+    workbook = Workbook()
+    employees = workbook.active
+    employees.title = "Employees"
+    employees.append(["Name", "Start date"])
+    employees.append(["Aster", "2026-01-01"])
+    workbook.save(path)
+
+    with ZipFile(path) as archive:
+        entries = {
+            entry.filename: archive.read(entry.filename)
+            for entry in archive.infolist()
+        }
+    entries["xl/worksheets/sheet1.xml"] = re.sub(
+        br"<dimension[^>]*/>",
+        b"",
+        entries["xl/worksheets/sheet1.xml"],
+    )
+    with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+        for filename, content in entries.items():
+            archive.writestr(filename, content)
 
 
 @pytest.mark.parametrize(
@@ -117,6 +142,18 @@ def test_xlsx_formula_is_preserved_and_never_calculated(tmp_path):
     text = "\n".join(unit.text for unit in units)
     assert "[Formula: =1+1]" in text
     assert "Dependency: 2" not in text
+
+
+def test_xlsx_without_dimension_metadata_extracts_rows_and_provenance(tmp_path):
+    path = tmp_path / "dimensionless.xlsx"
+    create_dimensionless_xlsx(path)
+
+    _, units = XLSXLoader().load(path)
+
+    assert len(units) == 1
+    assert "Name: Aster" in units[0].text
+    assert units[0].section == "Employees"
+    assert units[0].source_locator.label == "Employees · rows 2–2"
 
 
 def test_xlsx_bounds_are_explicit(tmp_path, monkeypatch):

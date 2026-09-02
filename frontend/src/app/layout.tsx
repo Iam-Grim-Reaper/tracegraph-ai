@@ -20,9 +20,9 @@ const geistMono = Geist_Mono({
 
 
 export const metadata: Metadata = {
-  title: "TraceGraph AI",
+  title: "TraceGraph",
   description:
-    "Context-Aware Agentic GraphRAG Platform combining hybrid retrieval, knowledge graphs, multi-hop reasoning, and agentic verification.",
+    "Evidence-first document intelligence with hybrid retrieval, knowledge graphs, and verification.",
 };
 
 

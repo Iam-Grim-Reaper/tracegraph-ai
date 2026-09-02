@@ -1,47 +1,35 @@
-# OpenNext Starter
+# TraceGraph frontend
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+The Next.js interface for TraceGraph.
 
-## Getting Started
+- `/` is the hero-only product landing page.
+- `/app` is the document workspace, including catalog, upload, streaming
+  execution, answers, and evidence inspection.
 
-Read the documentation at https://opennext.js.org/cloudflare.
-
-## Develop
-
-Run the Next.js development server:
+## Local development
 
 ```bash
+npm ci
 npm run dev
-# or similar package manager command
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The workspace reads `NEXT_PUBLIC_API_URL` and defaults to
+`http://127.0.0.1:8000` when it is not set.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-## Preview
-
-Preview the application locally on the Cloudflare runtime:
+## Validation
 
 ```bash
-npm run preview
-# or similar package manager command
+npm run lint
+npm run build
 ```
 
-## Deploy
+## Vercel deployment
 
-Deploy the application to Cloudflare:
+Deploy this directory as a Vercel Next.js project with `npm run build`.
+Set these safe, browser-visible Vercel environment variables:
 
-```bash
-npm run deploy
-# or similar package manager command
-```
+- `NEXT_PUBLIC_API_URL` — Railway backend HTTPS origin.
+- `NEXT_PUBLIC_UPLOADS_ENABLED=false` — disables the public-demo upload UI.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+For local development, use `NEXT_PUBLIC_UPLOADS_ENABLED=true` in ignored
+`.env.local`. Do not set backend credentials in Vercel.
