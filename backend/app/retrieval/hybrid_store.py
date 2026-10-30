@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 
 from qdrant_client import (
     QdrantClient,
@@ -36,9 +37,16 @@ class HybridStore:
                 "QDRANT_API_KEY is not configured"
             )
 
+        # Cloud-hosted BM25 inference is required for models.Document
+        # when Qdrant is managed by Qdrant Cloud. Keep local Docker
+        # instances on their usual client-side inference path.
+        hostname = urlparse(settings.qdrant_url).hostname or ""
+        cloud_inference = hostname.endswith(".cloud.qdrant.io")
+
         self.client = QdrantClient(
             url=settings.qdrant_url,
             api_key=settings.qdrant_api_key,
+            cloud_inference=cloud_inference,
         )
 
         self.collection_name = (
