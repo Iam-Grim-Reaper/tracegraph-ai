@@ -42,6 +42,9 @@ class HybridStore:
         # instances on their usual client-side inference path.
         hostname = urlparse(settings.qdrant_url).hostname or ""
         cloud_inference = hostname.endswith(".cloud.qdrant.io")
+        # Qdrant Cloud uses a lowercase hosted model identifier;
+        # local FastEmbed historically uses the case-sensitive ID.
+        self.BM25_MODEL = "qdrant/bm25" if cloud_inference else type(self).BM25_MODEL
 
         self.client = QdrantClient(
             url=settings.qdrant_url,
