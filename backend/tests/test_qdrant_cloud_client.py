@@ -43,3 +43,4 @@ def test_bm25_inference_mode_matches_qdrant_host(
 
     assert store.collection_name == "test-hybrid"
     assert captured["cloud_inference"] is expected_cloud_inference
+    assert store.BM25_MODEL == ("qdrant/bm25" if expected_cloud_inference else "Qdrant/bm25")
