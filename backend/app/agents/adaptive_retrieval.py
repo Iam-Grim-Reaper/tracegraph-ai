@@ -396,8 +396,38 @@ class AdaptiveEvidenceRetriever:
             not hybrid_signal.has_evidence
             and not graph_signal.has_evidence
         ):
-            ranked_hybrid = []
-            ranked_graph = []
+            # Reranker's raw scores are not calibrated probabilities.
+            # A brief document-relative question (e.g. "whose resume
+            # is this?") may score below the cutoff even when Qdrant
+            # returns valid chunks from the explicitly selected file.
+            # Keep up to two of those chunks as candidate evidence,
+            # letting Research/Verification decide whether they
+            # actually answer the question. Never relax the cutoff
+            # for searches without a selected document scope.
+            scoped_candidates = [
+                (point, score)
+                for point, score in ranked_hybrid
+                if (
+                    document_ids
+                    and (point.payload or {}).get("document_id")
+                        in document_ids
+                    and str(
+                        (point.payload or {}).get("text", "")
+                    ).strip()
+                )
+            ]
+            if hybrid_error is None and scoped_candidates:
+                ranked_hybrid = scoped_candidates[:2]
+                ranked_graph = []
+                decision = EvidenceDecision(
+                    "hybrid",
+                    "No result exceeded the reranker cutoff; "
+                    "preserving two document-scoped text chunks "
+                    "for grounded answer verification.",
+                )
+            else:
+                ranked_hybrid = []
+                ranked_graph = []
 
         # ---------------------------------------------------------
         # Compose final evidence context
