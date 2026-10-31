@@ -429,15 +429,20 @@ export function TraceGraphResult({
 }
 
 function VerificationStatus({ status, verified }: { status: TraceGraphResponse["answer_status"]; verified: boolean }) {
-  if (verified) {
+  // An abstention is not a verified factual answer, even when the
+  // verification agent correctly decides that evidence is insufficient.
+  if (status === "verified_abstention" || status === "grounded_abstention") {
+    return <span className="verification-badge">Insufficient evidence</span>;
+  }
+  if (verified && status === "verified_answer") {
     return <span className="verification-badge is-verified">✓ Verified</span>;
   }
   const label = {
     verified_answer: "Verified answer",
-    verified_abstention: "Verified abstention",
+    verified_abstention: "Insufficient evidence",
     degraded_retrieval: "Limited evidence",
     partial_grounded_answer: "Partially grounded",
-    grounded_abstention: "Grounded abstention",
+    grounded_abstention: "Insufficient evidence",
   }[status];
   return <span className="verification-badge">{label}</span>;
 }
