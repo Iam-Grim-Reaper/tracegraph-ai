@@ -59,5 +59,3 @@ jobs:
       - run: uv run --no-sync pytest -q tests
         env:
           APP_ENV: test
-          DEBUG: 'false'
-          PUBLIC_UPLOADS_ENABLED: 'false'
