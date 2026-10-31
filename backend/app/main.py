@@ -21,6 +21,7 @@ from app.core.config import Settings
 from app.core.observability import RequestContextMiddleware, configure_logging, log_event
 from app.core.lifecycle import stream_workers
 from app.services.tracegraph_service import close_tracegraph_service
+from app.services.document_catalog_service import close_catalog_store
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
                 app_settings.stream_shutdown_timeout_seconds
             )
             close_tracegraph_service()
+            close_catalog_store()
             log_event(
                 logger,
                 logging.INFO,
