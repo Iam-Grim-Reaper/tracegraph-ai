@@ -519,6 +519,17 @@ function AnswerMethod({
         <MethodItem label="Graph evidence" value={`${result.graph_evidence_count} facts`} />
         <MethodItem label="Verification" value={result.verified ? "Passed" : "Not confirmed"} />
       </div>
+      {result.adaptive_retrieval_latency_ms != null && (
+        <div className="performance-summary" aria-label="Retrieval performance">
+          <p className="method-label">Retrieval performance <span className="metrics-note">Measured by API · excludes generation</span></p>
+          <div className="performance-metrics">
+            <PerformanceMetric label="Adaptive retrieval" value={result.adaptive_retrieval_latency_ms} />
+            <PerformanceMetric label="Embedding" value={result.query_embedding_latency_ms} />
+            <PerformanceMetric label="Graph search" value={result.graph_probe_latency_ms} />
+            <PerformanceMetric label="Reranking" value={result.reranker_latency_ms} />
+          </div>
+        </div>
+      )}
       {scopeNames.length > 0 && <MethodItem label="Scoped documents" value={scopeNames.join(", ")} />}
       {result.routing_reason && <MethodItem label="Routing decision" value={result.routing_reason} />}
       {result.decomposition_used && <Decomposition items={result.subquestions} />}
@@ -567,6 +578,16 @@ function Decomposition({ items }: { items: TraceGraphResponse["subquestions"] })
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function PerformanceMetric({ label, value }: { label: string; value?: number | null }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return (
+    <div className="performance-metric">
+      <span className="performance-metric-value">{value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`}</span>
+      <span className="performance-metric-label">{label}</span>
     </div>
   );
 }
