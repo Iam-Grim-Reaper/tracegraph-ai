@@ -1,4 +1,5 @@
 import json
+from threading import Lock
 
 from app.api.document_models import (
     DocumentSummary,
@@ -6,6 +7,38 @@ from app.api.document_models import (
 from app.graph.store import (
     Neo4jGraphStore,
 )
+
+
+# One Neo4j Driver/connection pool per backend process. Driver instances
+# are thread-safe; repeatedly creating and closing them per request defeats
+# connection pooling and can add substantial TLS/Bolt handshakes.
+_catalog_lock = Lock()
+_catalog_store = None
+_catalog_factory = None
+
+
+def _get_catalog_store():
+    global _catalog_store, _catalog_factory
+    factory = Neo4jGraphStore
+    with _catalog_lock:
+        if _catalog_store is None or _catalog_factory is not factory:
+            previous = _catalog_store
+            _catalog_store = factory()
+            _catalog_factory = factory
+            if previous is not None:
+                previous.close()
+        return _catalog_store
+
+
+def close_catalog_store():
+    """Release the long-lived pool on FastAPI application shutdown."""
+    global _catalog_store, _catalog_factory
+    with _catalog_lock:
+        previous = _catalog_store
+        _catalog_store = None
+        _catalog_factory = None
+    if previous is not None:
+        previous.close()
 
 
 class DocumentCatalogService:
@@ -26,135 +59,130 @@ class DocumentCatalogService:
     ) -> list[
         DocumentSummary
     ]:
-        store = (
-            Neo4jGraphStore()
+        store = _get_catalog_store()
+
+        # execute_query establishes connectivity and surfaces errors;
+        # a separate verification round-trip adds latency per request.
+
+        rows = (
+            store.query(
+                """
+                MATCH (
+                    d:Document
+                )
+
+                WHERE
+                    d.indexing_status =
+                        'ready'
+
+                OPTIONAL MATCH (
+                    d
+                )-[:CONTAINS]->(
+                    c:Chunk
+                )
+
+                WITH
+                    d,
+
+                    count(
+                        DISTINCT c
+                    ) AS chunk_count
+
+                OPTIONAL MATCH (
+                    c2:Chunk
+                )-[:MENTIONS]->(
+                    e:Entity
+                )
+
+                WHERE
+                    c2.document_id =
+                        d.document_id
+
+                WITH
+                    d,
+
+                    chunk_count,
+
+                    count(
+                        DISTINCT e
+                    ) AS entity_count
+
+                OPTIONAL MATCH (
+                    :Entity
+                )-[r]->(
+                    :Entity
+                )
+
+                WHERE
+                    r.source_document_id =
+                        d.document_id
+
+                    AND NOT type(r) IN [
+                        'CONTAINS',
+                        'MENTIONS'
+                    ]
+
+                RETURN
+                    d.document_id
+                        AS document_id,
+
+                    d.filename
+                        AS filename,
+
+                    d.file_type
+                        AS file_type,
+
+                    d.title
+                        AS title,
+
+                    d.author
+                        AS author,
+
+                    d.ontology_profile
+                        AS ontology_profile,
+
+                    d.ontology_version
+                        AS ontology_version,
+
+                    d.ontology_profiles
+                        AS ontology_profiles,
+
+                    d.ontology_confidence
+                        AS ontology_confidence,
+
+                    d.ontology_method
+                        AS ontology_method,
+
+                    d.ontology_reason
+                        AS ontology_reason,
+
+                    d.ontology_scores_json
+                        AS ontology_scores_json,
+
+                    chunk_count,
+
+                    entity_count,
+
+                    count(
+                        DISTINCT r
+                    ) AS
+                        graph_relationship_count
+
+                ORDER BY
+                    filename
+                """
+            )
         )
 
-        try:
-            # execute_query establishes connectivity and surfaces errors;
-            # a separate verification round-trip adds latency per request.
-
-            rows = (
-                store.query(
-                    """
-                    MATCH (
-                        d:Document
-                    )
-
-                    WHERE
-                        d.indexing_status =
-                            'ready'
-
-                    OPTIONAL MATCH (
-                        d
-                    )-[:CONTAINS]->(
-                        c:Chunk
-                    )
-
-                    WITH
-                        d,
-
-                        count(
-                            DISTINCT c
-                        ) AS chunk_count
-
-                    OPTIONAL MATCH (
-                        c2:Chunk
-                    )-[:MENTIONS]->(
-                        e:Entity
-                    )
-
-                    WHERE
-                        c2.document_id =
-                            d.document_id
-
-                    WITH
-                        d,
-
-                        chunk_count,
-
-                        count(
-                            DISTINCT e
-                        ) AS entity_count
-
-                    OPTIONAL MATCH (
-                        :Entity
-                    )-[r]->(
-                        :Entity
-                    )
-
-                    WHERE
-                        r.source_document_id =
-                            d.document_id
-
-                        AND NOT type(r) IN [
-                            'CONTAINS',
-                            'MENTIONS'
-                        ]
-
-                    RETURN
-                        d.document_id
-                            AS document_id,
-
-                        d.filename
-                            AS filename,
-
-                        d.file_type
-                            AS file_type,
-
-                        d.title
-                            AS title,
-
-                        d.author
-                            AS author,
-
-                        d.ontology_profile
-                            AS ontology_profile,
-
-                        d.ontology_version
-                            AS ontology_version,
-
-                        d.ontology_profiles
-                            AS ontology_profiles,
-
-                        d.ontology_confidence
-                            AS ontology_confidence,
-
-                        d.ontology_method
-                            AS ontology_method,
-
-                        d.ontology_reason
-                            AS ontology_reason,
-
-                        d.ontology_scores_json
-                            AS ontology_scores_json,
-
-                        chunk_count,
-
-                        entity_count,
-
-                        count(
-                            DISTINCT r
-                        ) AS
-                            graph_relationship_count
-
-                    ORDER BY
-                        filename
-                    """
-                )
+        return [
+            self._row_to_summary(
+                row
             )
 
-            return [
-                self._row_to_summary(
-                    row
-                )
+            for row
+            in rows
+        ]
 
-                for row
-                in rows
-            ]
-
-        finally:
-            store.close()
 
     def get_document(
         self,
@@ -163,140 +191,135 @@ class DocumentCatalogService:
         DocumentSummary
         | None
     ):
-        store = (
-            Neo4jGraphStore()
+        store = _get_catalog_store()
+
+        # execute_query establishes connectivity and surfaces errors;
+        # a separate verification round-trip adds latency per request.
+
+        rows = (
+            store.query(
+                """
+                MATCH (
+                    d:Document {
+                        document_id:
+                            $document_id
+                    }
+                )
+
+                WHERE
+                    d.indexing_status =
+                        'ready'
+
+                OPTIONAL MATCH (
+                    d
+                )-[:CONTAINS]->(
+                    c:Chunk
+                )
+
+                WITH
+                    d,
+
+                    count(
+                        DISTINCT c
+                    ) AS chunk_count
+
+                OPTIONAL MATCH (
+                    c2:Chunk
+                )-[:MENTIONS]->(
+                    e:Entity
+                )
+
+                WHERE
+                    c2.document_id =
+                        d.document_id
+
+                WITH
+                    d,
+
+                    chunk_count,
+
+                    count(
+                        DISTINCT e
+                    ) AS entity_count
+
+                OPTIONAL MATCH (
+                    :Entity
+                )-[r]->(
+                    :Entity
+                )
+
+                WHERE
+                    r.source_document_id =
+                        d.document_id
+
+                    AND NOT type(r) IN [
+                        'CONTAINS',
+                        'MENTIONS'
+                    ]
+
+                RETURN
+                    d.document_id
+                        AS document_id,
+
+                    d.filename
+                        AS filename,
+
+                    d.file_type
+                        AS file_type,
+
+                    d.title
+                        AS title,
+
+                    d.author
+                        AS author,
+
+                    d.ontology_profile
+                        AS ontology_profile,
+
+                    d.ontology_version
+                        AS ontology_version,
+
+                    d.ontology_profiles
+                        AS ontology_profiles,
+
+                    d.ontology_confidence
+                        AS ontology_confidence,
+
+                    d.ontology_method
+                        AS ontology_method,
+
+                    d.ontology_reason
+                        AS ontology_reason,
+
+                    d.ontology_scores_json
+                        AS ontology_scores_json,
+
+                    chunk_count,
+
+                    entity_count,
+
+                    count(
+                        DISTINCT r
+                    ) AS
+                        graph_relationship_count
+                """,
+                {
+                    "document_id": (
+                        document_id
+                    )
+                },
+            )
         )
 
-        try:
-            # execute_query establishes connectivity and surfaces errors;
-            # a separate verification round-trip adds latency per request.
+        if not rows:
+            return None
 
-            rows = (
-                store.query(
-                    """
-                    MATCH (
-                        d:Document {
-                            document_id:
-                                $document_id
-                        }
-                    )
-
-                    WHERE
-                        d.indexing_status =
-                            'ready'
-
-                    OPTIONAL MATCH (
-                        d
-                    )-[:CONTAINS]->(
-                        c:Chunk
-                    )
-
-                    WITH
-                        d,
-
-                        count(
-                            DISTINCT c
-                        ) AS chunk_count
-
-                    OPTIONAL MATCH (
-                        c2:Chunk
-                    )-[:MENTIONS]->(
-                        e:Entity
-                    )
-
-                    WHERE
-                        c2.document_id =
-                            d.document_id
-
-                    WITH
-                        d,
-
-                        chunk_count,
-
-                        count(
-                            DISTINCT e
-                        ) AS entity_count
-
-                    OPTIONAL MATCH (
-                        :Entity
-                    )-[r]->(
-                        :Entity
-                    )
-
-                    WHERE
-                        r.source_document_id =
-                            d.document_id
-
-                        AND NOT type(r) IN [
-                            'CONTAINS',
-                            'MENTIONS'
-                        ]
-
-                    RETURN
-                        d.document_id
-                            AS document_id,
-
-                        d.filename
-                            AS filename,
-
-                        d.file_type
-                            AS file_type,
-
-                        d.title
-                            AS title,
-
-                        d.author
-                            AS author,
-
-                        d.ontology_profile
-                            AS ontology_profile,
-
-                        d.ontology_version
-                            AS ontology_version,
-
-                        d.ontology_profiles
-                            AS ontology_profiles,
-
-                        d.ontology_confidence
-                            AS ontology_confidence,
-
-                        d.ontology_method
-                            AS ontology_method,
-
-                        d.ontology_reason
-                            AS ontology_reason,
-
-                        d.ontology_scores_json
-                            AS ontology_scores_json,
-
-                        chunk_count,
-
-                        entity_count,
-
-                        count(
-                            DISTINCT r
-                        ) AS
-                            graph_relationship_count
-                    """,
-                    {
-                        "document_id": (
-                            document_id
-                        )
-                    },
-                )
+        return (
+            self._row_to_summary(
+                rows[0]
             )
+        )
 
-            if not rows:
-                return None
-
-            return (
-                self._row_to_summary(
-                    rows[0]
-                )
-            )
-
-        finally:
-            store.close()
 
     # =====================================================
     # Row conversion
