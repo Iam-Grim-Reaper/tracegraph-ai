@@ -212,6 +212,53 @@ def test_no_usable_evidence_uses_abstention_context(monkeypatch):
     assert result["research_context"].startswith("No document-scoped")
 
 
+def test_scoped_short_identity_question_keeps_low_score_text(monkeypatch):
+    monkeypatch.setattr(
+        "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold",
+        -9.0,
+    )
+    node, *_ = build(
+        [point("SHRIYANS DENIS\\nAI Software Engineer resume")],
+        [],
+        [-9.965],
+    )
+    result = node({
+        "question": "whose resume is this",
+        "document_ids": ["doc-1"],
+    })
+    assert result["retrieval_route"] == "hybrid"
+    assert "SHRIYANS DENIS" in result["research_context"]
+    assert result["evidence_items"][0]["label"] == "Evidence 1"
+    assert result["retrieved_chunk_ids"] == ["chunk-1"]
+    assert "reranker cutoff" in result["routing_reason"]
+
+
+def test_unscoped_low_score_candidates_still_abstain(monkeypatch):
+    monkeypatch.setattr(
+        "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold",
+        -9.0,
+    )
+    node, *_ = build([point("SHRIYANS DENIS resume")], [], [-9.965])
+    result = node({"question": "whose resume is this"})
+    assert result["retrieval_route"] == "fused"
+    assert result["retrieved_chunk_ids"] == []
+    assert result["evidence_items"] == []
+
+
+def test_scoped_fallback_rejects_other_documents(monkeypatch):
+    monkeypatch.setattr(
+        "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold",
+        -9.0,
+    )
+    node, *_ = build([point("Wrong document")], [], [-9.965])
+    result = node({
+        "question": "whose resume is this",
+        "document_ids": ["doc-2"],
+    })
+    assert result["retrieved_chunk_ids"] == []
+    assert result["evidence_items"] == []
+
+
 def test_one_channel_failure_degrades_and_both_fail_raise(monkeypatch):
     monkeypatch.setattr(
         "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold", 0.0
