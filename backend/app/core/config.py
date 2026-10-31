@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
         if self.app_env in {"test", "production"} and not explicit_debug:
             object.__setattr__(self, "debug", False)
-        if self.app_env == "development" and not explicit_uploads:
+        if self.app_env in {"development", "test"} and not explicit_uploads:
             object.__setattr__(self, "public_uploads_enabled", True)
 
         if (
