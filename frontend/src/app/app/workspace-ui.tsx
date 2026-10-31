@@ -37,8 +37,9 @@ export function AppHeader({
   return (
     <header className="app-header">
       <div className="app-header-brand">
-        <Link className="wordmark" href="/" aria-label="TraceGraph home">TRACEGRAPH<span className="wordmark-mark"> / AI</span></Link>
+        <Link className="wordmark" href="/" aria-label="TraceGraph home">TRACEGRAPH<span className="wordmark-mark"> / RESEARCH</span></Link>
       </div>
+      <span className="app-header-context">EVIDENCE WORKSPACE / 01</span>
       <div className="app-header-actions">
         <button
           type="button"
@@ -47,8 +48,8 @@ export function AppHeader({
           aria-controls="tracegraph-document-library"
           aria-expanded={documentsOpen}
         >
-          <span aria-hidden="true">{documentsOpen ? "✕" : "▤"}</span>
-          {documentsOpen ? "Close" : "Library"}
+          <span aria-hidden="true">{documentsOpen ? "×" : "≡"}</span>
+          {documentsOpen ? "Close" : "Documents"}
           <span className="mobile-library-count">{documentCount}</span>
         </button>
         <span className="app-header-status" aria-live="polite">
@@ -111,7 +112,7 @@ export function DocumentRail({
     <aside id="tracegraph-document-library" className="doc-rail" aria-label="Documents">
       <div className="doc-rail-head">
         <div className="doc-rail-title">
-          <h2>Documents</h2>
+          <h2>Library</h2>
           <span>{documents.length}</span>
         </div>
         <button type="button" onClick={onRefresh} disabled={loading} className="doc-rail-refresh">
@@ -126,8 +127,8 @@ export function DocumentRail({
         className={selectedDocumentIds.length === 0 ? "doc-scope is-selected" : "doc-scope"}
       >
         <span>
-          <span className="doc-scope-title">All documents</span>
-          <span className="doc-scope-note">Default search scope</span>
+          <span className="doc-scope-title">Entire collection</span>
+          <span className="doc-scope-note">Search all available documents</span>
         </span>
         <SelectionIndicator selected={selectedDocumentIds.length === 0} />
       </button>
@@ -201,7 +202,7 @@ export function DocumentRail({
             {uploadError && <p className="doc-upload-note is-error">Document indexing failed: {uploadError}</p>}
           </>
         ) : uploadsEnabled === false ? (
-          <p className="doc-upload-note">Uploads are disabled in the public demo.</p>
+          <p className="doc-upload-note">Read-only collection. Uploads are not available in this demo.</p>
         ) : null}
       </div>
     </aside>
@@ -233,7 +234,7 @@ function DocumentEmptyState({ uploadsEnabled }: { uploadsEnabled: boolean | null
   return (
     <div className="doc-rail-empty">
       <p>No documents yet</p>
-      <p>{uploadsEnabled ? "Upload a PDF, TXT, Markdown, DOCX, PPTX, or XLSX file to begin." : "This public demo uses pre-indexed documents."}</p>
+      <p>{uploadsEnabled ? "Upload a PDF, TXT, Markdown, DOCX, PPTX, or XLSX file to begin." : "No indexed documents are available right now. Uploads are disabled for visitors."}</p>
     </div>
   );
 }
@@ -254,9 +255,9 @@ function InlineError({ title, message }: { title: string; message: string }) {
 export function WorkspaceIntro() {
   return (
     <div className="ask-intro">
-      <span className="workspace-kicker"><span aria-hidden="true">✦</span> INTELLIGENT RESEARCH WORKSPACE</span>
-      <h1>Ask better questions.<br /><span>Get grounded answers.</span></h1>
-      <p className="workspace-intro-detail">Hybrid search, knowledge graphs and evidence verification—working together.</p>
+      <span className="workspace-kicker">RESEARCH DESK <span aria-hidden="true">/ 01</span></span>
+      <h1>Good answers<br /><span>leave a trail.</span></h1>
+      <p className="workspace-intro-detail">Search your document collection and trace each claim to the evidence behind it.</p>
     </div>
   );
 }
@@ -296,10 +297,13 @@ export function QuestionComposer({
         disabled={loading}
       />
       <div className="composer-bar">
-        <span className="composer-scope" title={scopeLabel}>{scopeLabel.toUpperCase()}</span>
-        <button type="submit" disabled={loading || !question.trim() || apiOffline}>
-          {loading ? "Working…" : "Ask"} <span aria-hidden="true">↑</span>
-        </button>
+        <span className="composer-scope" title={scopeLabel}>SCOPE <span>{scopeLabel}</span></span>
+        <div className="composer-actions">
+          <span className="composer-shortcut"><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></span>
+          <button type="submit" disabled={loading || !question.trim() || apiOffline}>
+            {loading ? "Researching…" : "Ask TraceGraph"} <span aria-hidden="true">↗</span>
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -316,9 +320,11 @@ export function ExampleQuestions({
     <section className="suggested" aria-label="Suggested questions">
       <p className="eyebrow">Suggested</p>
       <div className="suggested-list">
-        {questions.map((item) => (
+        {questions.map((item, index) => (
           <button key={item} type="button" onClick={() => void onQuestion(item)} className="suggested-row">
-            {item}
+            <span className="suggested-number">{String(index + 1).padStart(2, "0")}</span>
+            <span className="suggested-question">{item}</span>
+            <span className="suggested-arrow" aria-hidden="true">↗</span>
           </button>
         ))}
       </div>
@@ -340,14 +346,15 @@ export function LoadingState({
   onStop: () => void;
 }) {
   const visibleEvents = events.filter((event) => event.type !== "completed");
+  const currentEvent = visibleEvents[visibleEvents.length - 1];
 
   return (
     <section className="stream-panel" aria-live="polite" aria-label="Live TraceGraph execution">
       <div className="stream-panel-head">
-        <p className="eyebrow">Tracing evidence…</p>
+        <p className="eyebrow"><span className="activity-pulse" aria-hidden="true" /> Research in progress</p>
         <button type="button" onClick={onStop} className="stream-stop">Stop</button>
       </div>
-      <p className="stream-scope">Searching {scopeLabel}</p>
+      <p className="stream-scope">{currentEvent ? progressTitle(currentEvent.type) : "Preparing your research request"}<span> · {scopeLabel}</span></p>
       <details className="stream-detail">
         <summary>View live execution</summary>
         <ol>
@@ -387,13 +394,25 @@ export function TraceGraphResult({
   documents,
   question,
   events,
+  responseElapsedMs,
 }: {
   result: TraceGraphResponse;
   documents: DocumentSummary[];
   question: string;
   events: ChatStreamEvent[];
+  responseElapsedMs: number | null;
 }) {
   const [selectedEvidence, setSelectedEvidence] = useState<TraceGraphEvidence | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  useEffect(() => setCopyState("idle"), [result.answer]);
+  const copyAnswer = async () => {
+    try {
+      await navigator.clipboard.writeText(result.answer);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  };
   const scopeNames =
     result.document_ids?.map((id) => documents.find((document) => document.document_id === id)?.filename ?? id) ?? [];
   const citedLabels = new Set(result.used_evidence_labels.map((label) => label.replace(/^\[|\]$/g, "")));
@@ -411,9 +430,17 @@ export function TraceGraphResult({
       <article className="result-block">
         <div className="result-answer-head">
           <p className="eyebrow">Answer</p>
-          <VerificationStatus status={result.answer_status} verified={result.verified} />
+          <div className="answer-tools">
+            <VerificationStatus status={result.answer_status} verified={result.verified} />
+            <button type="button" className="copy-answer" onClick={() => void copyAnswer()} aria-live="polite">
+              {copyState === "copied" ? "✓ Copied" : copyState === "failed" ? "Copy unavailable" : "Copy answer"}
+            </button>
+          </div>
         </div>
         <MarkdownAnswer value={result.answer} />
+        {responseElapsedMs !== null && (
+          <p className="response-time">END-TO-END RESPONSE <span>{(responseElapsedMs / 1000).toFixed(2)}s</span> · Measured in this browser</p>
+        )}
       </article>
 
       <section className="result-block" aria-labelledby="sources-heading">
@@ -476,7 +503,7 @@ function EvidenceRow({ evidence, index, onOpen }: { evidence: TraceGraphEvidence
   const sourceName = evidence.filename ?? "Indexed document";
   const locator = sourceLocator(evidence);
   return (
-    <button type="button" onClick={onOpen} className="source-row">
+    <button type="button" onClick={onOpen} className="source-row" aria-label={`Inspect evidence from ${sourceName}, ${locator}`}>
       <span className="source-row-index">{String(index).padStart(2, "0")}</span>
       <span className="source-row-body">
         <span className="source-row-head">
@@ -485,6 +512,7 @@ function EvidenceRow({ evidence, index, onOpen }: { evidence: TraceGraphEvidence
         </span>
         <span className="source-row-excerpt">&ldquo;{evidence.text || "Open source evidence"}&rdquo;</span>
       </span>
+      <span className="source-row-open" aria-hidden="true">↗</span>
     </button>
   );
 }
