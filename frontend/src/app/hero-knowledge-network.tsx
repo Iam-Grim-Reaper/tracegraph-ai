@@ -84,7 +84,7 @@ function createRandom(seed: number) {
 
 function nodeCountForViewport(viewportWidth: number) {
   if (viewportWidth <= 640) {
-    return 56;
+    return 42;
   }
   if (viewportWidth <= 850) {
     return 112;
@@ -403,12 +403,20 @@ export function HeroKnowledgeNetwork() {
       }
     };
 
+    // On narrow screens, halve canvas draws to reduce battery and CPU
+    // load while keeping the underlying graph animation responsive.
+    let lastFrameTime = 0;
     const scheduleFrame = () => {
       if (reduceMotion || !inView || document.visibilityState !== "visible" || frameId !== null) {
         return;
       }
       frameId = window.requestAnimationFrame((time) => {
         frameId = null;
+        if (window.innerWidth <= 640 && time - lastFrameTime < 32) {
+          scheduleFrame();
+          return;
+        }
+        lastFrameTime = time;
         if (traceRef.current === null && time >= nextAutonomousTraceAt) {
           const graph = graphRef.current;
           const startNode = graph.nodes[Math.floor(autonomousRandom() * graph.nodes.length)];
@@ -448,7 +456,7 @@ export function HeroKnowledgeNetwork() {
 
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const dpr = Math.min(window.devicePixelRatio || 1, window.innerWidth <= 640 ? 1.25 : 1.5);
       size.width = Math.max(1, Math.round(bounds.width));
       size.height = Math.max(1, Math.round(bounds.height));
       size.dpr = dpr;

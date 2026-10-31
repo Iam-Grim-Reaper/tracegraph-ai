@@ -36,6 +36,7 @@ const DEFAULT_QUESTIONS = Object.values(DOMAIN_QUESTIONS).slice(0, 3);
 
 export default function Home() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  const [mobileDocumentsOpen, setMobileDocumentsOpen] = useState(false);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
@@ -128,6 +129,7 @@ export default function Home() {
     );
     setResult(null);
     setError(null);
+    setMobileDocumentsOpen(false);
   };
 
   const clearDocumentScope = () => {
@@ -201,8 +203,13 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <AppHeader apiStatus={apiStatus} />
-      <div className="app-workspace">
+      <AppHeader
+        apiStatus={apiStatus}
+        documentsOpen={mobileDocumentsOpen}
+        documentCount={documents.length}
+        onToggleDocuments={() => setMobileDocumentsOpen((current) => !current)}
+      />
+      <div className={mobileDocumentsOpen ? "app-workspace is-library-open" : "app-workspace"}>
         <DocumentRail
           documents={documents}
           loading={documentsLoading}

@@ -180,6 +180,9 @@ def test_jitter_and_backoff_are_bounded(monkeypatch):
 def test_ontology_exhaustion_keeps_deterministic_fallback(monkeypatch, no_component_sleep):
     from app.graph import ontology_classifier as module
 
+    # An LLM provider must be configured to exercise the retry path.
+    # Use a dummy test-only key; the fake client never sends requests.
+    monkeypatch.setattr(module.settings, "gemini_api_key", "unit-test-key")
     client, models = fake_client(*[server_error(503) for _ in range(3)])
     monkeypatch.setattr(module, "create_gemini_client", lambda timeout: client)
     monkeypatch.setattr(

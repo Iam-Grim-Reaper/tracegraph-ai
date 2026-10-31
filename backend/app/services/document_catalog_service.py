@@ -31,7 +31,8 @@ class DocumentCatalogService:
         )
 
         try:
-            store.verify_connectivity()
+            # execute_query establishes connectivity and surfaces errors;
+            # a separate verification round-trip adds latency per request.
 
             rows = (
                 store.query(
@@ -167,7 +168,8 @@ class DocumentCatalogService:
         )
 
         try:
-            store.verify_connectivity()
+            # execute_query establishes connectivity and surfaces errors;
+            # a separate verification round-trip adds latency per request.
 
             rows = (
                 store.query(

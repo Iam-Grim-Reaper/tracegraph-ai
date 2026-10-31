@@ -22,17 +22,40 @@ type ApiStatus = "checking" | "healthy" | "offline";
 /* App header                                                        */
 /* ---------------------------------------------------------------- */
 
-export function AppHeader({ apiStatus }: { apiStatus: ApiStatus }) {
+export function AppHeader({
+  apiStatus,
+  documentsOpen,
+  documentCount,
+  onToggleDocuments,
+}: {
+  apiStatus: ApiStatus;
+  documentsOpen: boolean;
+  documentCount: number;
+  onToggleDocuments: () => void;
+}) {
   const statusText = { checking: "Connecting", healthy: "Online", offline: "Offline" }[apiStatus];
   return (
     <header className="app-header">
       <div className="app-header-brand">
-        <Link className="wordmark" href="/" aria-label="TraceGraph home">TRACEGRAPH</Link>
+        <Link className="wordmark" href="/" aria-label="TraceGraph home">TRACEGRAPH<span className="wordmark-mark"> / AI</span></Link>
       </div>
-      <span className="app-header-status" aria-live="polite">
-        <span className={`status-dot ${apiStatus}`} aria-hidden="true" />
-        {statusText}
-      </span>
+      <div className="app-header-actions">
+        <button
+          type="button"
+          className="mobile-library-toggle"
+          onClick={onToggleDocuments}
+          aria-controls="tracegraph-document-library"
+          aria-expanded={documentsOpen}
+        >
+          <span aria-hidden="true">{documentsOpen ? "✕" : "▤"}</span>
+          {documentsOpen ? "Close" : "Library"}
+          <span className="mobile-library-count">{documentCount}</span>
+        </button>
+        <span className="app-header-status" aria-live="polite">
+          <span className={`status-dot ${apiStatus}`} aria-hidden="true" />
+          {statusText}
+        </span>
+      </div>
     </header>
   );
 }
@@ -85,7 +108,7 @@ export function DocumentRail({
   };
 
   return (
-    <aside className="doc-rail" aria-label="Documents">
+    <aside id="tracegraph-document-library" className="doc-rail" aria-label="Documents">
       <div className="doc-rail-head">
         <div className="doc-rail-title">
           <h2>Documents</h2>
@@ -231,7 +254,9 @@ function InlineError({ title, message }: { title: string; message: string }) {
 export function WorkspaceIntro() {
   return (
     <div className="ask-intro">
-      <h1>Ask anything<br />about your documents.</h1>
+      <span className="workspace-kicker"><span aria-hidden="true">✦</span> INTELLIGENT RESEARCH WORKSPACE</span>
+      <h1>Ask better questions.<br /><span>Get grounded answers.</span></h1>
+      <p className="workspace-intro-detail">Hybrid search, knowledge graphs and evidence verification—working together.</p>
     </div>
   );
 }
@@ -494,6 +519,17 @@ function AnswerMethod({
         <MethodItem label="Graph evidence" value={`${result.graph_evidence_count} facts`} />
         <MethodItem label="Verification" value={result.verified ? "Passed" : "Not confirmed"} />
       </div>
+      {result.adaptive_retrieval_latency_ms != null && (
+        <div className="performance-summary" aria-label="Retrieval performance">
+          <p className="method-label">Retrieval performance <span className="metrics-note">Measured by API · excludes generation</span></p>
+          <div className="performance-metrics">
+            <PerformanceMetric label="Adaptive retrieval" value={result.adaptive_retrieval_latency_ms} />
+            <PerformanceMetric label="Embedding" value={result.query_embedding_latency_ms} />
+            <PerformanceMetric label="Graph search" value={result.graph_probe_latency_ms} />
+            <PerformanceMetric label="Reranking" value={result.reranker_latency_ms} />
+          </div>
+        </div>
+      )}
       {scopeNames.length > 0 && <MethodItem label="Scoped documents" value={scopeNames.join(", ")} />}
       {result.routing_reason && <MethodItem label="Routing decision" value={result.routing_reason} />}
       {result.decomposition_used && <Decomposition items={result.subquestions} />}
@@ -542,6 +578,16 @@ function Decomposition({ items }: { items: TraceGraphResponse["subquestions"] })
           </li>
         ))}
       </ol>
+    </div>
+  );
+}
+
+function PerformanceMetric({ label, value }: { label: string; value?: number | null }) {
+  if (value == null || !Number.isFinite(value)) return null;
+  return (
+    <div className="performance-metric">
+      <span className="performance-metric-value">{value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`}</span>
+      <span className="performance-metric-label">{label}</span>
     </div>
   );
 }

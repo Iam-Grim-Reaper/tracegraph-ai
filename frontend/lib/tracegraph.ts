@@ -93,6 +93,13 @@ export interface TraceGraphResponse {
 
   graph_top_relevance: number | null;
 
+  query_embedding_latency_ms?: number | null;
+  hybrid_probe_latency_ms?: number | null;
+  graph_probe_latency_ms?: number | null;
+  reranker_latency_ms?: number | null;
+  adaptive_retrieval_latency_ms?: number | null;
+  decomposition_latency_ms?: number | null;
+
   requires_decomposition: boolean;
 
   degraded: boolean;

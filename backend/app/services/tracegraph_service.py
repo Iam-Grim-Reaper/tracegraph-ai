@@ -221,14 +221,26 @@ class TraceGraphService:
             )
         )
 
-        evidence_items = result.get("evidence_items", [])
-        documents_by_id = {
-            document.document_id: document.filename
-            for document in DocumentCatalogService().list_documents()
+        # Most retrieval paths already attach the source filename to
+        # every evidence item. Avoid a full Neo4j catalog aggregation
+        # for each answer when no metadata is missing.
+        evidence_items = [
+            dict(item) for item in result.get("evidence_items", [])
+        ]
+        missing_filenames = {
+            item.get("document_id")
+            for item in evidence_items
+            if item.get("document_id") and not item.get("filename")
         }
-        for item in evidence_items:
-            if not item.get("filename") and item.get("document_id"):
-                item["filename"] = documents_by_id.get(item["document_id"])
+        if missing_filenames:
+            documents_by_id = {
+                document.document_id: document.filename
+                for document in DocumentCatalogService().list_documents()
+                if document.document_id in missing_filenames
+            }
+            for item in evidence_items:
+                if not item.get("filename") and item.get("document_id"):
+                    item["filename"] = documents_by_id.get(item["document_id"])
 
         used_labels = result.get("used_evidence_labels", [])
         verified = result.get("verification_passed", False)
