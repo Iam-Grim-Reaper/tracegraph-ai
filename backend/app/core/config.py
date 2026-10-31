@@ -56,9 +56,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3000"
     cors_allowed_origins: str | None = None
 
-    # Uploads are disabled by default.
-    # Production can explicitly enable them with:
-    # PUBLIC_UPLOADS_ENABLED=true
+    # Local development uploads are enabled by default. Production
+    # must reject public uploads unless an authenticated ingestion
+    # route is implemented; see validate_environment below.
     public_uploads_enabled: bool = False
 
     # Gemini
@@ -106,9 +106,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_environment(self):
         explicit_debug = "debug" in self.model_fields_set
+        explicit_uploads = "public_uploads_enabled" in self.model_fields_set
 
         if self.app_env in {"test", "production"} and not explicit_debug:
             object.__setattr__(self, "debug", False)
+        if self.app_env == "development" and not explicit_uploads:
+            object.__setattr__(self, "public_uploads_enabled", True)
 
         if (
             self.provider_retry_max_delay_seconds
@@ -125,6 +128,10 @@ class Settings(BaseSettings):
         if self.debug:
             raise ProductionConfigurationError(
                 "Invalid production setting: DEBUG must be false"
+            )
+        if self.public_uploads_enabled:
+            raise ProductionConfigurationError(
+                "Invalid production setting: PUBLIC_UPLOADS_ENABLED must be false"
             )
 
         required = {
