@@ -45,6 +45,7 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
   const [result, setResult] = useState<TraceGraphResponse | null>(null);
+  const [responseElapsedMs, setResponseElapsedMs] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [streamEvents, setStreamEvents] = useState<ChatStreamEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +90,15 @@ export default function Home() {
   }, [loadDocuments]);
 
   useEffect(() => () => streamController.current?.abort(), []);
+
+  useEffect(() => {
+    if (!mobileDocumentsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileDocumentsOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [mobileDocumentsOpen]);
 
   const selectedDocuments = useMemo(
     () => documents.filter((document) => selectedDocumentIds.includes(document.document_id)),
@@ -149,8 +159,10 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setResponseElapsedMs(null);
     setStreamEvents([]);
     streamController.current?.abort();
+    const startedAt = performance.now();
     const controller = new AbortController();
     streamController.current = controller;
 
@@ -161,6 +173,7 @@ export default function Home() {
         (event) => setStreamEvents((current) => [...current, event]),
         controller.signal,
       );
+      setResponseElapsedMs(Math.round(performance.now() - startedAt));
       setResult(response);
     } catch (err) {
       if (controller.signal.aborted) {
@@ -210,6 +223,15 @@ export default function Home() {
         onToggleDocuments={() => setMobileDocumentsOpen((current) => !current)}
       />
       <div className={mobileDocumentsOpen ? "app-workspace is-library-open" : "app-workspace"}>
+        {mobileDocumentsOpen && (
+          <button
+            type="button"
+            className="mobile-library-scrim"
+            onClick={() => setMobileDocumentsOpen(false)}
+            aria-label="Close document library"
+            tabIndex={-1}
+          />
+        )}
         <DocumentRail
           documents={documents}
           loading={documentsLoading}
@@ -250,6 +272,7 @@ export default function Home() {
                 documents={documents}
                 question={submittedQuestion ?? question}
                 events={streamEvents}
+                responseElapsedMs={responseElapsedMs}
               />
             )}
           </div>
