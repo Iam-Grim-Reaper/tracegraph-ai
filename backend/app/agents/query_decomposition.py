@@ -119,6 +119,8 @@ class ConditionalDecompositionRetriever:
         neo4j_calls = 0
         crossencoder_calls = 0
         evidence_items = []
+        channel_degraded = False
+        channel_degradation_reason = None
 
         for item in plan.subquestions:
             grounded = []
@@ -144,6 +146,13 @@ class ConditionalDecompositionRetriever:
                 metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0, "depends_on": item.depends_on})
                 continue
             results[item.id] = result
+            if result.get("degraded", False):
+                channel_degraded = True
+                channel_degradation_reason = (
+                    channel_degradation_reason
+                    or result.get("degradation_reason")
+                    or "retrieval_channel_unavailable"
+                )
             embedding_calls += result.get("query_embedding_call_count", 0)
             qdrant_calls += result.get("qdrant_call_count", 0)
             neo4j_calls += result.get("neo4j_call_count", 0)
@@ -193,7 +202,8 @@ class ConditionalDecompositionRetriever:
             "subquestion_count": len(plan.subquestions),
             "subquestions": metadata,
             "query_embedding_call_count": embedding_calls,
-            "degraded": False,
+            "degraded": channel_degraded,
+            "degradation_reason": channel_degradation_reason,
             "qdrant_call_count": qdrant_calls,
             "neo4j_call_count": neo4j_calls,
             "crossencoder_call_count": crossencoder_calls,

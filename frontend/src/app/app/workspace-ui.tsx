@@ -404,7 +404,6 @@ export function TraceGraphResult({
 }) {
   const [selectedEvidence, setSelectedEvidence] = useState<TraceGraphEvidence | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-  useEffect(() => setCopyState("idle"), [result.answer]);
   const copyAnswer = async () => {
     try {
       await navigator.clipboard.writeText(result.answer);

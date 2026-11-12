@@ -248,11 +248,18 @@ class TraceGraphService:
         decomposition_degraded = result.get("decomposition_degraded", False)
         if degraded:
             answer_status = "degraded_retrieval"
+        elif decomposition_degraded:
+            # A verifier can approve the evidence that *was* found without
+            # proving that skipped subquestions were answered.
+            answer_status = (
+                "partial_grounded_answer" if used_labels
+                else "grounded_abstention"
+            )
         elif verified and used_labels:
             answer_status = "verified_answer"
         elif verified:
             answer_status = "verified_abstention"
-        elif used_labels or decomposition_degraded:
+        elif used_labels:
             answer_status = "partial_grounded_answer"
         else:
             answer_status = "grounded_abstention"

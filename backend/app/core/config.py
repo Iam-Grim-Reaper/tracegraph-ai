@@ -84,11 +84,15 @@ class Settings(BaseSettings):
     qdrant_api_key: str | None = None
     qdrant_hybrid_collection: str = "tracegraph_chunks_hybrid"
 
-    # Neo4j
+    # Neo4j: bound connection acquisition and retry cost when Aura is paused.
+    # The official driver's 30s/60s defaults are too long for interactive UI.
     neo4j_uri: str | None = None
     neo4j_username: str | None = None
     neo4j_password: str | None = None
     neo4j_database: str = "neo4j"
+    neo4j_connection_timeout_seconds: float = Field(default=5.0, gt=0, le=30)
+    neo4j_acquisition_timeout_seconds: float = Field(default=8.0, gt=0, le=60)
+    neo4j_max_transaction_retry_seconds: float = Field(default=3.0, ge=0, le=30)
 
     @property
     def allowed_cors_origins(self) -> list[str]:
@@ -120,6 +124,12 @@ class Settings(BaseSettings):
             raise ValueError(
                 "PROVIDER_RETRY_MAX_DELAY_SECONDS must be greater than or "
                 "equal to PROVIDER_RETRY_BASE_DELAY_SECONDS"
+            )
+
+        if self.neo4j_acquisition_timeout_seconds < self.neo4j_connection_timeout_seconds:
+            raise ValueError(
+                "NEO4J_ACQUISITION_TIMEOUT_SECONDS must be >= "
+                "NEO4J_CONNECTION_TIMEOUT_SECONDS"
             )
 
         if self.app_env != "production":

@@ -100,8 +100,9 @@ class AdaptiveEvidenceRetriever:
         self.hybrid_store = hybrid_store or HybridStore()
 
         if graph_retriever is None:
+            # Driver construction is lazy: a graph outage is handled by the
+            # graph probe's degraded-mode path, not by failing chat startup.
             graph_store = Neo4jGraphStore()
-            graph_store.verify_connectivity()
             self.graph_retriever = GraphQueryRetriever(graph_store)
         else:
             self.graph_retriever = graph_retriever

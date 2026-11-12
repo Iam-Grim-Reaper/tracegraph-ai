@@ -39,9 +39,12 @@ def build_tracegraph_workflow(resource_owners: list[object] | None = None):
             "QUERY_ROUTING_MODE must be adaptive or legacy"
         )
 
-    router = RetrievalRouter()
-
-    retrieval = RetrievalNodes()
+    # An adaptive request does not use the legacy router or retrieval nodes.
+    # Instantiating them eagerly doubles storage clients, verifies Neo4j twice,
+    # and can prevent text-only degraded retrieval during a graph outage.
+    adaptive_mode = settings.query_routing_mode == "adaptive"
+    router = None if adaptive_mode else RetrievalRouter()
+    retrieval = None if adaptive_mode else RetrievalNodes()
 
     research_agent = (
         ResearchAgent()
@@ -59,33 +62,18 @@ def build_tracegraph_workflow(resource_owners: list[object] | None = None):
     # Agent / retrieval nodes
     # ---------------------------------
 
-    workflow.add_node(
-        "retrieval_router",
-        router,
-    )
-
     adaptive_retrieval = None
-    if settings.query_routing_mode == "adaptive":
+    if adaptive_mode:
         adaptive_retrieval = ConditionalDecompositionRetriever()
         workflow.add_node(
             "adaptive_retrieval",
             adaptive_retrieval,
         )
-
-    workflow.add_node(
-        "hybrid_retrieval",
-        retrieval.hybrid,
-    )
-
-    workflow.add_node(
-        "graph_retrieval",
-        retrieval.graph,
-    )
-
-    workflow.add_node(
-        "fused_retrieval",
-        retrieval.fused,
-    )
+    else:
+        workflow.add_node("retrieval_router", router)
+        workflow.add_node("hybrid_retrieval", retrieval.hybrid)
+        workflow.add_node("graph_retrieval", retrieval.graph)
+        workflow.add_node("fused_retrieval", retrieval.fused)
 
     workflow.add_node(
         "research_agent",
@@ -142,20 +130,10 @@ def build_tracegraph_workflow(resource_owners: list[object] | None = None):
     # into research.
     # ---------------------------------
 
-    workflow.add_edge(
-        "hybrid_retrieval",
-        "research_agent",
-    )
-
-    workflow.add_edge(
-        "graph_retrieval",
-        "research_agent",
-    )
-
-    workflow.add_edge(
-        "fused_retrieval",
-        "research_agent",
-    )
+    if not adaptive_mode:
+        workflow.add_edge("hybrid_retrieval", "research_agent")
+        workflow.add_edge("graph_retrieval", "research_agent")
+        workflow.add_edge("fused_retrieval", "research_agent")
 
     # ---------------------------------
     # Research -> Verification
@@ -213,13 +191,13 @@ def build_tracegraph_workflow(resource_owners: list[object] | None = None):
     )
 
     if resource_owners is not None:
-        resource_owners.extend([
-            retrieval.embedding_service.client,
-            retrieval.hybrid_store.client,
-            retrieval.graph_store,
-            research_agent.client,
-            verification_agent.client,
-        ])
+        resource_owners.extend([research_agent.client, verification_agent.client])
+        if retrieval is not None:
+            resource_owners.extend([
+                retrieval.embedding_service.client,
+                retrieval.hybrid_store.client,
+                retrieval.graph_store,
+            ])
         if adaptive_retrieval is not None:
             resource_owners.extend([
                 adaptive_retrieval.adaptive.embedding_service.client,
