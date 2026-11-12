@@ -6,6 +6,8 @@ TraceGraph's production audit found a 56.6-second `GET /api/documents` failure d
 
 ## Changes
 
+- Deterministically validate citation labels in the verifier's final output against retrieved context, rejecting unavailable or silently removed draft citations.
+
 1. Compile only the configured routing branch. The adaptive path does not create unused legacy Qdrant, Gemini, and Neo4j clients.
 2. Start query embedding inside the hybrid retrieval task, concurrently with Neo4j graph probing. This removes the embedding-first dependency on the graph path while preserving the same evidence/reranking inputs.
 2. Defer Neo4j connectivity to the actual graph probe so the existing Qdrant-only degraded route remains available if graph access is down.
