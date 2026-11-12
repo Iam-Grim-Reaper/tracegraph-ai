@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import { BrandMark } from "../brand-mark";
 
 import {
   ChatStreamEvent,
@@ -26,21 +27,33 @@ export function AppHeader({
   apiStatus,
   documentsOpen,
   documentCount,
+  documentsLoading,
   onToggleDocuments,
 }: {
   apiStatus: ApiStatus;
   documentsOpen: boolean;
   documentCount: number;
+  documentsLoading: boolean;
   onToggleDocuments: () => void;
 }) {
-  const statusText = { checking: "Connecting", healthy: "Online", offline: "Offline" }[apiStatus];
+  // The status reflects /health liveness, not Qdrant or Neo4j readiness.
+  const statusText = { checking: "Connecting", healthy: "API reachable", offline: "API offline" }[apiStatus];
   return (
     <header className="app-header">
       <div className="app-header-brand">
-        <Link className="wordmark" href="/" aria-label="TraceGraph home">TRACEGRAPH<span className="wordmark-mark"> / RESEARCH</span></Link>
+        <Link className="wordmark" href="/" aria-label="TraceGraph home">
+          <BrandMark />
+          <span>TRACEGRAPH</span>
+        </Link>
+        <span className="header-divider" aria-hidden="true" />
+        <span className="app-header-context">RESEARCH / WORKSPACE</span>
       </div>
-      <span className="app-header-context">EVIDENCE WORKSPACE / 01</span>
       <div className="app-header-actions">
+        <Link className="app-header-home" href="/">Overview <span aria-hidden="true">↗</span></Link>
+        <span className="app-header-status" aria-live="polite">
+          <span className={`status-dot ${apiStatus}`} aria-hidden="true" />
+          {statusText}
+        </span>
         <button
           type="button"
           className="mobile-library-toggle"
@@ -48,14 +61,10 @@ export function AppHeader({
           aria-controls="tracegraph-document-library"
           aria-expanded={documentsOpen}
         >
-          <span aria-hidden="true">{documentsOpen ? "×" : "≡"}</span>
-          {documentsOpen ? "Close" : "Documents"}
-          <span className="mobile-library-count">{documentCount}</span>
+          <span className="mobile-toggle-icon" aria-hidden="true">{documentsOpen ? "×" : "☰"}</span>
+          {documentsOpen ? "Close" : "Library"}
+          <span className="mobile-library-count">{documentsLoading ? "—" : documentCount}</span>
         </button>
-        <span className="app-header-status" aria-live="polite">
-          <span className={`status-dot ${apiStatus}`} aria-hidden="true" />
-          {statusText}
-        </span>
       </div>
     </header>
   );
@@ -111,12 +120,15 @@ export function DocumentRail({
   return (
     <aside id="tracegraph-document-library" className="doc-rail" aria-label="Documents">
       <div className="doc-rail-head">
-        <div className="doc-rail-title">
-          <h2>Library</h2>
-          <span>{documents.length}</span>
+        <div className="doc-rail-heading">
+          <p className="doc-rail-eyebrow">YOUR KNOWLEDGE BASE</p>
+          <div className="doc-rail-title">
+            <h2>Library</h2>
+            <span>{loading ? "—" : String(documents.length).padStart(2, "0")}</span>
+          </div>
         </div>
-        <button type="button" onClick={onRefresh} disabled={loading} className="doc-rail-refresh">
-          Refresh
+        <button type="button" onClick={onRefresh} disabled={loading} className="doc-rail-refresh" aria-label="Refresh document library" title="Refresh library">
+          <span aria-hidden="true">↻</span>
         </button>
       </div>
 
@@ -127,8 +139,8 @@ export function DocumentRail({
         className={selectedDocumentIds.length === 0 ? "doc-scope is-selected" : "doc-scope"}
       >
         <span>
-          <span className="doc-scope-title">Entire collection</span>
-          <span className="doc-scope-note">Search all available documents</span>
+          <span className="doc-scope-title">All documents</span>
+          <span className="doc-scope-note">Search the full collection</span>
         </span>
         <SelectionIndicator selected={selectedDocumentIds.length === 0} />
       </button>
@@ -140,7 +152,7 @@ export function DocumentRail({
             type="search"
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter documents"
+            placeholder="Search library"
           />
         </label>
       )}
@@ -202,7 +214,7 @@ export function DocumentRail({
             {uploadError && <p className="doc-upload-note is-error">Document indexing failed: {uploadError}</p>}
           </>
         ) : uploadsEnabled === false ? (
-          <p className="doc-upload-note">Read-only collection. Uploads are not available in this demo.</p>
+          <div className="read-only-note"><span className="read-only-indicator" aria-hidden="true" /><p>Public demo · read-only collection</p></div>
         ) : null}
       </div>
     </aside>
@@ -255,9 +267,9 @@ function InlineError({ title, message }: { title: string; message: string }) {
 export function WorkspaceIntro() {
   return (
     <div className="ask-intro">
-      <span className="workspace-kicker">RESEARCH DESK <span aria-hidden="true">/ 01</span></span>
-      <h1>Good answers<br /><span>leave a trail.</span></h1>
-      <p className="workspace-intro-detail">Search your document collection and trace each claim to the evidence behind it.</p>
+      <span className="workspace-kicker"><span className="workspace-kicker-line" aria-hidden="true" /> RESEARCH SESSION / 01</span>
+      <h1>Find an answer.<br /><span>Follow the trail.</span></h1>
+      <p className="workspace-intro-detail">Search across documents, uncover connections, and inspect the original evidence behind every response.</p>
     </div>
   );
 }
@@ -292,20 +304,33 @@ export function QuestionComposer({
         value={question}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Ask about your documents…"
+        placeholder="What would you like to investigate?"
         rows={4}
         disabled={loading}
       />
       <div className="composer-bar">
         <span className="composer-scope" title={scopeLabel}>SCOPE <span>{scopeLabel}</span></span>
         <div className="composer-actions">
-          <span className="composer-shortcut"><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>Enter</kbd></span>
+          <span className="composer-shortcut"><kbd>⌘</kbd> / <kbd>Ctrl</kbd> + <kbd>↵</kbd></span>
           <button type="submit" disabled={loading || !question.trim() || apiOffline}>
-            {loading ? "Researching…" : "Ask TraceGraph"} <span aria-hidden="true">↗</span>
+            {loading ? "Working…" : "Run search"} <span aria-hidden="true">↗</span>
           </button>
         </div>
       </div>
     </form>
+  );
+}
+
+export function CollectionNotice({ kind }: { kind: "empty" | "unavailable" }) {
+  const unavailable = kind === "unavailable";
+  return (
+    <section className="collection-notice" aria-live="polite">
+      <p className="eyebrow">{unavailable ? "LIBRARY / CONNECTION" : "LIBRARY / EMPTY"}</p>
+      <h2>{unavailable ? "Sources temporarily unavailable." : "No sources indexed yet."}</h2>
+      <p>{unavailable
+        ? "The document catalog couldn't be loaded. You can retry from the library panel; the API may be reachable even when a database is not."
+        : "This public workspace is read-only. When documents are available, suggested research questions will appear here."}</p>
+    </section>
   );
 }
 
@@ -318,7 +343,7 @@ export function ExampleQuestions({
 }) {
   return (
     <section className="suggested" aria-label="Suggested questions">
-      <p className="eyebrow">Suggested</p>
+      <div className="suggested-heading"><p className="eyebrow">START WITH A QUESTION</p><span>SELECT TO RUN ↗</span></div>
       <div className="suggested-list">
         {questions.map((item, index) => (
           <button key={item} type="button" onClick={() => void onQuestion(item)} className="suggested-row">
@@ -351,7 +376,7 @@ export function LoadingState({
   return (
     <section className="stream-panel" aria-live="polite" aria-label="Live TraceGraph execution">
       <div className="stream-panel-head">
-        <p className="eyebrow"><span className="activity-pulse" aria-hidden="true" /> Research in progress</p>
+        <p className="eyebrow"><span className="activity-pulse" aria-hidden="true" /> RESEARCH IN PROGRESS</p>
         <button type="button" onClick={onStop} className="stream-stop">Stop</button>
       </div>
       <p className="stream-scope">{currentEvent ? progressTitle(currentEvent.type) : "Preparing your research request"}<span> · {scopeLabel}</span></p>
@@ -422,13 +447,13 @@ export function TraceGraphResult({
   return (
     <section className="result" aria-label="TraceGraph answer and evidence">
       <div className="result-block">
-        <p className="eyebrow">Question</p>
+        <p className="eyebrow">01 / QUESTION</p>
         <p className="result-question">{question}</p>
       </div>
 
       <article className="result-block">
         <div className="result-answer-head">
-          <p className="eyebrow">Answer</p>
+          <p className="eyebrow">02 / FINDINGS</p>
           <div className="answer-tools">
             <VerificationStatus status={result.answer_status} verified={result.verified} />
             <button type="button" className="copy-answer" onClick={() => void copyAnswer()} aria-live="polite">
@@ -444,7 +469,7 @@ export function TraceGraphResult({
 
       <section className="result-block" aria-labelledby="sources-heading">
         <div className="result-block-head">
-          <h2 id="sources-heading">Sources</h2>
+          <h2 id="sources-heading">03 / SOURCE EVIDENCE</h2>
           <span>{String(evidence.length).padStart(2, "0")}</span>
         </div>
         {evidence.length > 0 ? (
@@ -509,7 +534,7 @@ function EvidenceRow({ evidence, index, onOpen }: { evidence: TraceGraphEvidence
           <span className="source-row-name">{sourceName}</span>
           <span className="source-row-locator">{locator}</span>
         </span>
-        <span className="source-row-excerpt">&ldquo;{evidence.text || "Open source evidence"}&rdquo;</span>
+        <span className="source-row-excerpt">{evidence.text || "Open source evidence"}</span>
       </span>
       <span className="source-row-open" aria-hidden="true">↗</span>
     </button>
@@ -629,14 +654,42 @@ function MethodItem({ label, value }: { label: string; value: string }) {
 }
 
 function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])') ?? [],
+    );
+    getFocusableElements()[0]?.focus();
+
     const handler = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose();
+      }
+      if (event.key !== "Tab") return;
+      const elements = getFocusableElements();
+      if (!elements.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   return (
@@ -649,7 +702,7 @@ function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; o
         }
       }}
     >
-      <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="evidence-drawer">
+      <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="evidence-drawer" ref={dialogRef}>
         <div className="evidence-drawer-head">
           <div>
             <p className="eyebrow">{evidence.kind === "graph" ? "Graph source" : "Source evidence"}</p>

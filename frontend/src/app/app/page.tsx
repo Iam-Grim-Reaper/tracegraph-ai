@@ -16,6 +16,7 @@ import {
   AppHeader,
   DocumentRail,
   ErrorState,
+  CollectionNotice,
   ExampleQuestions,
   LoadingState,
   QuestionComposer,
@@ -65,7 +66,11 @@ export default function Home() {
       const validIds = new Set(response.documents.map((document) => document.document_id));
       setSelectedDocumentIds((current) => current.filter((id) => validIds.has(id)));
     } catch (err) {
-      setDocumentsError(err instanceof Error ? err.message : "Unable to load documents.");
+      setDocumentsError(
+        err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")
+          ? "The document library timed out. Please refresh to try again."
+          : err instanceof Error ? err.message : "Unable to load documents.",
+      );
     } finally {
       setDocumentsLoading(false);
     }
@@ -74,7 +79,7 @@ export default function Home() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const response = await fetch(`${API_URL}/health`);
+        const response = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(6000) });
         if (!response.ok) {
           throw new Error("API health check failed.");
         }
@@ -93,11 +98,36 @@ export default function Home() {
 
   useEffect(() => {
     if (!mobileDocumentsOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const library = document.getElementById("tracegraph-document-library");
+    const focusable = () => Array.from(
+      library?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])') ?? [],
+    ).filter((element) => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMobileDocumentsOpen(false);
+      if (event.key !== "Tab") return;
+      const elements = focusable();
+      if (!elements.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
   }, [mobileDocumentsOpen]);
 
   const selectedDocuments = useMemo(
@@ -220,6 +250,7 @@ export default function Home() {
         apiStatus={apiStatus}
         documentsOpen={mobileDocumentsOpen}
         documentCount={documents.length}
+        documentsLoading={documentsLoading}
         onToggleDocuments={() => setMobileDocumentsOpen((current) => !current)}
       />
       <div className={mobileDocumentsOpen ? "app-workspace is-library-open" : "app-workspace"}>
@@ -259,7 +290,13 @@ export default function Home() {
               onChange={setQuestion}
               onSubmit={handleSubmit}
             />
-            {!result && !loading && !error && (
+            {!result && !loading && !error && !documentsLoading && documentsError && (
+              <CollectionNotice kind="unavailable" />
+            )}
+            {!result && !loading && !error && !documentsLoading && !documentsError && documents.length === 0 && (
+              <CollectionNotice kind="empty" />
+            )}
+            {!result && !loading && !error && !documentsLoading && !documentsError && documents.length > 0 && (
               <ExampleQuestions questions={exampleQuestions} onQuestion={submitQuestion} />
             )}
             {loading && (
