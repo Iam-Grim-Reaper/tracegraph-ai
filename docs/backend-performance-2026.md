@@ -7,6 +7,7 @@ TraceGraph's production audit found a 56.6-second `GET /api/documents` failure d
 ## Changes
 
 1. Compile only the configured routing branch. The adaptive path does not create unused legacy Qdrant, Gemini, and Neo4j clients.
+2. Start query embedding inside the hybrid retrieval task, concurrently with Neo4j graph probing. This removes the embedding-first dependency on the graph path while preserving the same evidence/reranking inputs.
 2. Defer Neo4j connectivity to the actual graph probe so the existing Qdrant-only degraded route remains available if graph access is down.
 3. Set bounded Neo4j driver connection/acquisition/retry settings (5s/8s/3s by default). This is not a universal HTTP request deadline and DNS/platform timeouts can differ.
 4. Propagate partial decomposition and degraded sub-retrieval information instead of marking incomplete composite answers as fully verified.

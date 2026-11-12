@@ -124,33 +124,31 @@ class AdaptiveEvidenceRetriever:
         document_ids = state.get("document_ids")
         requires_decomposition = self._requires_decomposition(question)
 
-        # ---------------------------------------------------------
-        # Query embedding
-        # ---------------------------------------------------------
-
-        embedding_started = perf_counter()
-
-        query_vector = self.embedding_service.embed_query(
-            question
-        )
-
-        query_embedding_latency_ms = (
-            perf_counter() - embedding_started
-        ) * 1000
-
-        # ---------------------------------------------------------
-        # Parallel retrieval probes
-        # ---------------------------------------------------------
-
+        # Query embedding and Qdrant share a dependency, but the graph
+        # probe does not need the query vector. Execute the full hybrid
+        # chain in parallel with Neo4j instead of embedding first and
+        # only then launching both searches. This preserves retrieval
+        # semantics and overlaps network latency on the critical path.
         hybrid_error = None
         graph_error = None
         hybrid_latency = None
         graph_latency = None
+        query_embedding_latency_ms = None
+        qdrant_call_count = 0
         neo4j_call_count = 1
 
         def hybrid_probe():
-            probe_started = perf_counter()
+            nonlocal query_embedding_latency_ms, qdrant_call_count
+            embedding_started = perf_counter()
+            try:
+                query_vector = self.embedding_service.embed_query(question)
+            finally:
+                query_embedding_latency_ms = (
+                    perf_counter() - embedding_started
+                ) * 1000
 
+            probe_started = perf_counter()
+            qdrant_call_count = 1
             result = self.hybrid_store.hybrid_search(
                 query=question,
                 dense_vector=query_vector,
@@ -158,11 +156,7 @@ class AdaptiveEvidenceRetriever:
                 candidate_limit=settings.adaptive_hybrid_candidate_limit,
                 document_ids=document_ids,
             )
-
-            return (
-                result,
-                (perf_counter() - probe_started) * 1000,
-            )
+            return result, (perf_counter() - probe_started) * 1000
 
         def graph_probe():
             probe_started = perf_counter()
@@ -531,7 +525,7 @@ class AdaptiveEvidenceRetriever:
                     ranked_graph
                 )
             ),
-            "qdrant_call_count": 1,
+            "qdrant_call_count": qdrant_call_count,
             "neo4j_call_count": (
                 neo4j_call_count
             ),
