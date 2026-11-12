@@ -59,3 +59,12 @@ jobs:
       - run: uv run --no-sync pytest -q tests
         env:
           APP_ENV: test
+      - name: Evaluate synthetic retrieval and citation smoke cases
+        run: uv run --no-sync python tools/evaluate_offline.py --input evaluation/smoke.jsonl --output evaluation-smoke-report.json --strict
+      - name: Publish machine-readable evaluation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracegraph-offline-evaluation
+          path: backend/evaluation-smoke-report.json
+          if-no-files-found: error
+          retention-days: 30
