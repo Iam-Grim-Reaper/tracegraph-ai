@@ -39,6 +39,7 @@ jobs:
       - run: uv python install 3.11
       - run: uv sync --frozen
       - name: Validate fixed files and extraction
+        # Smoke-test the exact CLI path used by operator workflows.
         run: uv run --no-sync python tools/seed_public_demo.py --mode preflight
       - name: Confirm production credentials are configured
         if: inputs.mode != 'preflight'

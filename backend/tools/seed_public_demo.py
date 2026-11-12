@@ -16,8 +16,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from time import perf_counter
+
+# Running this file directly via "python tools/seed_public_demo.py" puts
+# backend/tools on sys.path, not backend/. Add the package root before
+# importing app.* so GitHub Actions and local CLI behave the same way.
+_backend_root = Path(__file__).resolve().parents[1]
+if str(_backend_root) not in sys.path:
+    sys.path.insert(0, str(_backend_root))
 
 from app.demo.public_corpus import PUBLIC_DEMO_DOCUMENTS, validate_demo_file
 

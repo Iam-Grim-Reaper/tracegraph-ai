@@ -138,3 +138,24 @@ def test_chat_fails_closed_until_an_approved_document_is_ready(monkeypatch):
     service = service_module.TraceGraphService.__new__(service_module.TraceGraphService)
     with pytest.raises(ValueError, match="not ready"):
         service._prepare_request("Who developed this?", None)
+
+
+def test_seed_cli_invocation_from_backend_directory():
+    """The operator workflow must resolve app imports with no PYTHONPATH."""
+    import subprocess
+    import sys
+
+    backend = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "tools/seed_public_demo.py", "--mode", "preflight"],
+        cwd=backend,
+        capture_output=True,
+        text=True,
+        timeout=40,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-1500:]
+    import json
+    output = json.loads(result.stdout)
+    assert output["approved_document_count"] == 3
+    assert all(row["status"] == "preflight_passed" for row in output["results"])
