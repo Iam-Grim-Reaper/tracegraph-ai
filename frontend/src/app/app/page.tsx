@@ -93,11 +93,36 @@ export default function Home() {
 
   useEffect(() => {
     if (!mobileDocumentsOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const library = document.getElementById("tracegraph-document-library");
+    const focusable = () => Array.from(
+      library?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])') ?? [],
+    ).filter((element) => element.getClientRects().length > 0);
+    focusable()[0]?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMobileDocumentsOpen(false);
+      if (event.key !== "Tab") return;
+      const elements = focusable();
+      if (!elements.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
   }, [mobileDocumentsOpen]);
 
   const selectedDocuments = useMemo(
@@ -220,6 +245,7 @@ export default function Home() {
         apiStatus={apiStatus}
         documentsOpen={mobileDocumentsOpen}
         documentCount={documents.length}
+        documentsLoading={documentsLoading}
         onToggleDocuments={() => setMobileDocumentsOpen((current) => !current)}
       />
       <div className={mobileDocumentsOpen ? "app-workspace is-library-open" : "app-workspace"}>
