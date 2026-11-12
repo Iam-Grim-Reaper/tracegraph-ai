@@ -339,3 +339,48 @@ def test_paid_embedding_ingestion_can_disable_pacing(monkeypatch):
     service.model = "test-model"
     service.dimensions = 2
     assert len(service.embed_documents(["test"] * 22)) == 22
+
+
+def test_operator_retry_budget_can_exceed_interactive_default(monkeypatch):
+    """A long-running indexing job can survive transient provider 503s."""
+    from app.core.config import Settings
+
+    assert Settings(_env_file=None).provider_max_attempts == 3
+    configured = Settings(_env_file=None, provider_max_attempts=10)
+    assert configured.provider_max_attempts == 10
+    with pytest.raises(Exception):
+        Settings(_env_file=None, provider_max_attempts=13)
+    monkeypatch.setattr(settings, "provider_max_attempts", 10)
+    monkeypatch.setattr(settings, "provider_retry_base_delay_seconds", 1.0)
+    monkeypatch.setattr(settings, "provider_retry_max_delay_seconds", 20.0)
+
+    attempts = []
+    durations = []
+
+    def operation():
+        attempts.append(1)
+        if len(attempts) <= 6:
+            raise server_error(503)
+        return "graph extraction finished"
+
+    assert call_with_provider_resilience(
+        operation, sleep=durations.append, random_value=lambda: 0.0
+    ) == "graph extraction finished"
+    assert len(attempts) == 7
+    assert durations == [1.0, 3.0, 9.0, 20.0, 20.0, 20.0]
+
+
+def test_operator_does_not_retry_authentication_failures(monkeypatch):
+    monkeypatch.setattr(settings, "provider_max_attempts", 10)
+    attempts = []
+    def operation():
+        attempts.append(1)
+        raise client_error(403)
+
+    with pytest.raises(errors.ClientError):
+        call_with_provider_resilience(
+            operation, sleep=lambda seconds: (_ for _ in ()).throw(
+                AssertionError("nontransient errors must never sleep")
+            )
+        )
+    assert len(attempts) == 1
