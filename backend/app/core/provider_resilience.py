@@ -87,8 +87,6 @@ def _retry_delay(
 def _retry_after_seconds(exc: Exception) -> float | None:
     response = getattr(exc, "response", None)
     headers = getattr(response, "headers", None)
-    if not headers:
-        return None
     value = headers.get("retry-after") if headers else None
     if not value:
         # Gemini supplies RetryInfo (e.g. retryDelay '31s') in the
