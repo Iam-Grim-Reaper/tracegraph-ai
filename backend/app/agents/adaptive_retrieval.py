@@ -292,9 +292,11 @@ class AdaptiveEvidenceRetriever:
 
         reranker_started = perf_counter()
 
-        scores = self._get_reranker().score_texts(
-            question,
-            reranker_texts,
+        # Loading a transformer on a completely empty retrieval response
+        # adds cold-start seconds but cannot change the answer. Keep it lazy.
+        scores = (
+            self._get_reranker().score_texts(question, reranker_texts)
+            if reranker_texts else []
         )
 
         reranker_latency_ms = (

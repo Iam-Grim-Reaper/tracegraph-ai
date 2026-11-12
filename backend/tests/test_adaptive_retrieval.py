@@ -409,3 +409,22 @@ def test_embedding_failure_can_use_graph_evidence(monkeypatch):
     assert response["qdrant_call_count"] == 0
     assert hybrid.calls == 0
     assert response["graph_fact_count"] == 1
+
+
+def test_empty_evidence_does_not_initialize_crossencoder():
+    node = AdaptiveEvidenceRetriever(
+        FakeEmbeddingService(),
+        FakeHybridStore([]),
+        FakeGraphRetriever([]),
+        reranker=None,
+    )
+
+    def unexpected_model_load():
+        raise AssertionError("No candidate evidence: model must stay unloaded")
+
+    node._get_reranker = unexpected_model_load
+    result = node({"question": "unsupported question"})
+    assert result["crossencoder_call_count"] == 0
+    assert result["reranker_input_count"] == 0
+    assert result["retrieved_chunk_ids"] == []
+    assert result["research_context"] == ""
