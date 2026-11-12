@@ -1,7 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from neo4j import GraphDatabase
 from qdrant_client import QdrantClient
@@ -118,9 +120,65 @@ def readiness_failures(app_settings: Settings) -> list[dict[str, str]]:
     return failures
 
 
+def dependency_failures(app_settings: Settings) -> list[dict[str, str]]:
+    """Optional network-level readiness probe. Never expose driver exceptions."""
+
+    def qdrant_check() -> dict[str, str] | None:
+        client = None
+        try:
+            client = QdrantClient(
+                url=app_settings.qdrant_url,
+                api_key=app_settings.qdrant_api_key,
+                timeout=5,
+            )
+            client.get_collection(app_settings.qdrant_hybrid_collection)
+            return None
+        except Exception:
+            return {
+                "component": "qdrant",
+                "status": "failed",
+                "reason": "storage_unavailable",
+            }
+        finally:
+            if client is not None:
+                client.close()
+
+    def neo4j_check() -> dict[str, str] | None:
+        driver = None
+        try:
+            driver = GraphDatabase.driver(
+                app_settings.neo4j_uri,
+                auth=(app_settings.neo4j_username, app_settings.neo4j_password),
+                connection_timeout=app_settings.neo4j_connection_timeout_seconds,
+                connection_acquisition_timeout=app_settings.neo4j_acquisition_timeout_seconds,
+                max_transaction_retry_time=app_settings.neo4j_max_transaction_retry_seconds,
+            )
+            driver.verify_connectivity()
+            return None
+        except Exception:
+            return {
+                "component": "neo4j",
+                "status": "failed",
+                "reason": "storage_unavailable",
+            }
+        finally:
+            if driver is not None:
+                driver.close()
+
+    # Parallel probes avoid adding database latencies together. This is
+    # operator-triggered, not run by the cheap /health or default /ready.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(qdrant_check), pool.submit(neo4j_check)]
+        return [result for future in futures if (result := future.result())]
+
+
 @router.get("/ready")
-async def readiness_check():
+async def readiness_check(
+    deep: bool = Query(default=False, description="Opt-in live storage checks."),
+):
     failures = readiness_failures(settings)
+    if deep and not failures:
+        failures.extend(await run_in_threadpool(dependency_failures, settings))
     if failures:
         return JSONResponse(
             status_code=503,

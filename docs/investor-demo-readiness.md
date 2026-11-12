@@ -41,3 +41,7 @@ The strongest demo is an answer whose sources can be inspected, then a multi-hop
 ## Before claiming product-market readiness
 
 Secure a small real-document pilot (with consent), label evaluation questions, measure Recall@K and independently reviewed citation faithfulness, track cost per successful response and reliability over time, then compare against a plain hybrid RAG baseline. Use the [evaluation guide](evaluation-guide.md) to avoid reporting synthetic test scores as business impact.
+
+## Storage diagnostics
+
+Run `GET /ready?deep=true` during demo preflight to check live Neo4j connectivity and the configured Qdrant collection. This is a bounded, opt-in network probe; plain `/health` is liveness and plain `/ready` checks local configuration. The deep result uses sanitized component names and generic failures. It must not be continuously polled on a paused/free database or mistaken for an uptime SLO.
