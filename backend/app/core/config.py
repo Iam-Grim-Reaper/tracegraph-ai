@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # must reject public uploads unless an authenticated ingestion
     # route is implemented; see validate_environment below.
     public_uploads_enabled: bool = False
+    # Fixed, content-addressed dataset only; no arbitrary production documents.
+    public_demo_only: bool = True
 
     # Gemini
     gemini_api_key: str | None = None
@@ -142,6 +144,10 @@ class Settings(BaseSettings):
         if self.public_uploads_enabled:
             raise ProductionConfigurationError(
                 "Invalid production setting: PUBLIC_UPLOADS_ENABLED must be false"
+            )
+        if not self.public_demo_only:
+            raise ProductionConfigurationError(
+                "Invalid production setting: PUBLIC_DEMO_ONLY must be true"
             )
 
         required = {

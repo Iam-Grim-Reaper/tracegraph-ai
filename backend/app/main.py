@@ -104,6 +104,9 @@ def create_app(app_settings: Settings = settings) -> FastAPI:
         openapi_url=None if app_settings.app_env == "production" else "/openapi.json",
     )
     application.state.public_uploads_enabled = app_settings.public_uploads_enabled
+    application.state.public_demo_only = (
+        app_settings.app_env == "production" and app_settings.public_demo_only
+    )
 
     application.add_middleware(
         PublicUploadGateMiddleware,
