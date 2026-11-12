@@ -121,6 +121,7 @@ def test_partial_decomposition_never_becomes_fully_verified():
         None,
     )
     assert result["answer_status"] == "partial_grounded_answer"
+    assert result["verified"] is False
 
 
 def test_decomposition_propagates_degraded_retrieval_channel():

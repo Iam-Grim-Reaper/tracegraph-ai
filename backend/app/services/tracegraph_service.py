@@ -1,4 +1,5 @@
 import logging
+import re
 from threading import Lock
 from time import perf_counter
 
@@ -240,24 +241,29 @@ class TraceGraphService:
                 if not item.get("filename") and item.get("document_id"):
                     item["filename"] = documents_by_id.get(item["document_id"])
 
-        used_labels = result.get("used_evidence_labels", [])
-        verified = result.get("verification_passed", False)
-        degraded = result.get("degraded", False)
-        decomposition_degraded = result.get("decomposition_degraded", False)
+        # Final status must describe the answer actually returned, not
+        # citation labels in the discarded research draft.
+        has_final_citations = bool(re.search(
+            r"\[(?:Graph )?Evidence (?:[a-z]\d+-)?\d+\]",
+            final_answer,
+            flags=re.IGNORECASE,
+        ))
+        verifier_passed = bool(result.get("verification_passed", False))
+        degraded = bool(result.get("degraded", False))
+        decomposition_degraded = bool(result.get("decomposition_degraded", False))
+        fully_verified = verifier_passed and not degraded and not decomposition_degraded
         if degraded:
             answer_status = "degraded_retrieval"
         elif decomposition_degraded:
-            # A verifier can approve the evidence that *was* found without
-            # proving that skipped subquestions were answered.
             answer_status = (
-                "partial_grounded_answer" if used_labels
+                "partial_grounded_answer" if has_final_citations
                 else "grounded_abstention"
             )
-        elif verified and used_labels:
+        elif fully_verified and has_final_citations:
             answer_status = "verified_answer"
-        elif verified:
+        elif fully_verified:
             answer_status = "verified_abstention"
-        elif used_labels:
+        elif has_final_citations:
             answer_status = "partial_grounded_answer"
         else:
             answer_status = "grounded_abstention"
@@ -315,12 +321,7 @@ class TraceGraphService:
             "evidence_items": evidence_items,
             "answer_status": answer_status,
 
-            "verified": (
-                result.get(
-                    "verification_passed",
-                    False,
-                )
-            ),
+            "verified": fully_verified,
 
             "verification_reason": (
                 result.get(
