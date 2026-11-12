@@ -15,7 +15,7 @@
   --text: #f2f4f5;
   --text-subtle: #c6cbd0;
   --muted: #979da5;
-  --quiet: #707780;
+  --quiet: #878d95;
   --white: #f6f7f7;
   --success: #b7dcc2;
   --danger: #f0adae;
@@ -447,3 +447,8 @@ summary::-webkit-details-marker { display: none; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Honest collection states: no sample queries when nothing is searchable */
+.collection-notice { margin-top: 47px; padding: 25px 0 20px; border-top: 1px solid var(--line-strong); }
+.collection-notice h2 { margin: 19px 0 11px; color: var(--text); font-size: 19px; font-weight: 500; letter-spacing: -.04em; }
+.collection-notice > p:last-child { max-width: 560px; color: var(--muted); font-size: 13px; line-height: 1.75; }

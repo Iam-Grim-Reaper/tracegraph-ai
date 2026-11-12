@@ -334,6 +334,8 @@ Promise<DocumentListResponse> {
       method: "GET",
 
       cache: "no-store",
+      // Prevent an unavailable catalog from leaving the UI in a loading state.
+      signal: AbortSignal.timeout(15000),
     },
   );
 

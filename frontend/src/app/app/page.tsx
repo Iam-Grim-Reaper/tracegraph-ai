@@ -16,6 +16,7 @@ import {
   AppHeader,
   DocumentRail,
   ErrorState,
+  CollectionNotice,
   ExampleQuestions,
   LoadingState,
   QuestionComposer,
@@ -65,7 +66,11 @@ export default function Home() {
       const validIds = new Set(response.documents.map((document) => document.document_id));
       setSelectedDocumentIds((current) => current.filter((id) => validIds.has(id)));
     } catch (err) {
-      setDocumentsError(err instanceof Error ? err.message : "Unable to load documents.");
+      setDocumentsError(
+        err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")
+          ? "The document library timed out. Please refresh to try again."
+          : err instanceof Error ? err.message : "Unable to load documents.",
+      );
     } finally {
       setDocumentsLoading(false);
     }
@@ -74,7 +79,7 @@ export default function Home() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        const response = await fetch(`${API_URL}/health`);
+        const response = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(6000) });
         if (!response.ok) {
           throw new Error("API health check failed.");
         }
@@ -285,7 +290,13 @@ export default function Home() {
               onChange={setQuestion}
               onSubmit={handleSubmit}
             />
-            {!result && !loading && !error && (
+            {!result && !loading && !error && !documentsLoading && documentsError && (
+              <CollectionNotice kind="unavailable" />
+            )}
+            {!result && !loading && !error && !documentsLoading && !documentsError && documents.length === 0 && (
+              <CollectionNotice kind="empty" />
+            )}
+            {!result && !loading && !error && !documentsLoading && !documentsError && documents.length > 0 && (
               <ExampleQuestions questions={exampleQuestions} onQuestion={submitQuestion} />
             )}
             {loading && (

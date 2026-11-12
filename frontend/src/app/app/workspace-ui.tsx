@@ -321,6 +321,19 @@ export function QuestionComposer({
   );
 }
 
+export function CollectionNotice({ kind }: { kind: "empty" | "unavailable" }) {
+  const unavailable = kind === "unavailable";
+  return (
+    <section className="collection-notice" aria-live="polite">
+      <p className="eyebrow">{unavailable ? "LIBRARY / CONNECTION" : "LIBRARY / EMPTY"}</p>
+      <h2>{unavailable ? "Sources temporarily unavailable." : "No sources indexed yet."}</h2>
+      <p>{unavailable
+        ? "The document catalog couldn't be loaded. You can retry from the library panel; the API may be reachable even when a database is not."
+        : "This public workspace is read-only. When documents are available, suggested research questions will appear here."}</p>
+    </section>
+  );
+}
+
 export function ExampleQuestions({
   questions,
   onQuestion,
