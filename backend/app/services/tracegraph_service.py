@@ -233,11 +233,9 @@ class TraceGraphService:
             if item.get("document_id") and not item.get("filename")
         }
         if missing_filenames:
-            documents_by_id = {
-                document.document_id: document.filename
-                for document in DocumentCatalogService().list_documents()
-                if document.document_id in missing_filenames
-            }
+            documents_by_id = DocumentCatalogService().get_ready_filenames(
+                missing_filenames
+            )
             for item in evidence_items:
                 if not item.get("filename") and item.get("document_id"):
                     item["filename"] = documents_by_id.get(item["document_id"])
@@ -406,15 +404,9 @@ class TraceGraphService:
             DocumentCatalogService()
         )
 
-        indexed_documents = (
-            catalog.list_documents()
-        )
-
-        indexed_ids = {
-            document.document_id
-            for document
-            in indexed_documents
-        }
+        # An indexed document_id lookup avoids fetching the full catalog
+        # and computing all graph statistics for every scoped chat request.
+        indexed_ids = set(catalog.get_ready_filenames(document_ids))
 
         missing_ids = [
             document_id

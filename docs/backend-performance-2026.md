@@ -10,7 +10,8 @@ TraceGraph's production audit found a 56.6-second `GET /api/documents` failure d
 2. Defer Neo4j connectivity to the actual graph probe so the existing Qdrant-only degraded route remains available if graph access is down.
 3. Set bounded Neo4j driver connection/acquisition/retry settings (5s/8s/3s by default). This is not a universal HTTP request deadline and DNS/platform timeouts can differ.
 4. Propagate partial decomposition and degraded sub-retrieval information instead of marking incomplete composite answers as fully verified.
-5. Remove a frontend state-reset effect that prevented the shared GitHub Actions quality job from running to completion.
+5. Resolve requested ready document IDs and missing source filenames using a targeted indexed lookup instead of a full graph-counting document catalog query.
+6. Remove a frontend state-reset effect that prevented the shared GitHub Actions quality job from running to completion.
 
 ## Measurement plan (before claiming a speedup)
 
