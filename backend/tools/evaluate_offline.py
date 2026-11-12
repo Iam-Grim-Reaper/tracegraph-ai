@@ -16,7 +16,7 @@ import re
 import statistics
 from pathlib import Path
 
-CITATION_RE = re.compile(r"\\[((?:Graph )?Evidence (?:[a-z]\\d+-)?\\d+)\\]", re.IGNORECASE)
+CITATION_RE = re.compile(r"\[((?:Graph )?Evidence (?:[a-z]\d+-)?\d+)\]", re.IGNORECASE)
 ABSTENTION_STATUSES = {"grounded_abstention", "verified_abstention"}
 
 
