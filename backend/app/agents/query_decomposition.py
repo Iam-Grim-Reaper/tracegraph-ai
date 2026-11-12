@@ -11,7 +11,7 @@ from app.core.provider_resilience import call_with_provider_resilience, create_g
 
 
 class SubQuestion(BaseModel):
-    id: str
+    id: str = Field(pattern=r"^q[123]$")
     question: str = Field(min_length=1)
     depends_on: list[str] = Field(default_factory=list)
 
@@ -22,9 +22,10 @@ class DecompositionPlan(BaseModel):
     @model_validator(mode="after")
     def validate_dependencies(self):
         seen = set()
-        for item in self.subquestions:
-            if item.id in seen or any(value not in seen for value in item.depends_on):
-                raise ValueError("Sub-question dependencies must be unique and ordered")
+        for index, item in enumerate(self.subquestions, start=1):
+            # Citation labels are tied to canonical q1/q2/q3 identifiers.
+            if item.id != f"q{index}" or any(value not in seen for value in item.depends_on):
+                raise ValueError("Sub-question IDs must be q1/q2/q3 in dependency order")
             seen.add(item.id)
         return self
 
@@ -191,7 +192,10 @@ class ConditionalDecompositionRetriever:
             "final_route": "fused",
             "routing_strategy": "adaptive_evidence",
             "routing_reason": "Evidence was gathered for dependent parts of the question.",
-            "research_context": "\n\n".join(contexts) or "No document-scoped retrieval evidence found.",
+            # Do not send a synthetic 'no evidence' sentence to the research
+            # model as though it were a retrieved source. Empty context
+            # activates deterministic abstention rather than a paid LLM call.
+            "research_context": "\n\n".join(contexts),
             "retrieved_chunk_ids": chunk_ids,
             "graph_fact_count": graph_count,
             "requires_decomposition": True,

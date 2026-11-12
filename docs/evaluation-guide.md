@@ -34,3 +34,8 @@ Before merging retrieval-model or candidate-budget changes, compare quality on *
 - Microsoft Research, AgenticRAG (May 2026): targeted tool-driven search and in-document navigation can substantially improve difficult information retrieval; model and task dependence matter, so include difficult cases in evaluation.
 - RAGRouter-Bench (2026): no single retrieval paradigm wins across corpus/query contexts.
 - Qdrant Hybrid Queries (current): use unweighted RRF unless weights have been tuned on a held-out evaluation set.
+
+## Additional reliability invariants
+
+- Query decomposition IDs are required to be consecutive `q1`/`q2`/`q3` identifiers, preserving the same citation format across model-generated plans and regex validation.
+- When all subquestion retrieval attempts fail, the context is empty rather than a fabricated text placeholder. The researcher and verifier can abstain deterministically without treating that placeholder as evidence.
