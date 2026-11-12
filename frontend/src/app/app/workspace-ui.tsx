@@ -61,7 +61,7 @@ export function AppHeader({
           aria-controls="tracegraph-document-library"
           aria-expanded={documentsOpen}
         >
-          <span className="mobile-toggle-icon" aria-hidden="true">{documentsOpen ? "×" : "☷"}</span>
+          <span className="mobile-toggle-icon" aria-hidden="true">{documentsOpen ? "×" : "☰"}</span>
           {documentsOpen ? "Close" : "Library"}
           <span className="mobile-library-count">{documentsLoading ? "—" : documentCount}</span>
         </button>
@@ -641,14 +641,42 @@ function MethodItem({ label, value }: { label: string; value: string }) {
 }
 
 function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; onClose: () => void }) {
+  const dialogRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])') ?? [],
+    );
+    getFocusableElements()[0]?.focus();
+
     const handler = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose();
+      }
+      if (event.key !== "Tab") return;
+      const elements = getFocusableElements();
+      if (!elements.length) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
   }, [onClose]);
 
   return (
@@ -661,7 +689,7 @@ function EvidenceDrawer({ evidence, onClose }: { evidence: TraceGraphEvidence; o
         }
       }}
     >
-      <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="evidence-drawer">
+      <aside role="dialog" aria-modal="true" aria-labelledby="evidence-title" className="evidence-drawer" ref={dialogRef}>
         <div className="evidence-drawer-head">
           <div>
             <p className="eyebrow">{evidence.kind === "graph" ? "Graph source" : "Source evidence"}</p>
