@@ -28,6 +28,7 @@ from app.services.document_indexing_service import (
     DocumentIndexingService,
 )
 from app.core.observability import log_event
+from app.demo.public_corpus import PUBLIC_DEMO_IDS
 
 
 router = APIRouter(
@@ -436,9 +437,9 @@ def list_documents(
         DocumentCatalogService()
     )
 
-    documents = (
-        service.list_documents()
-    )
+    documents = service.list_documents()
+    if request.app.state.public_demo_only:
+        documents = [doc for doc in documents if doc.document_id in PUBLIC_DEMO_IDS]
 
     return (
         DocumentListResponse(
@@ -468,7 +469,13 @@ def list_documents(
 )
 def get_document(
     document_id: str,
+    request: Request,
 ) -> DocumentSummary:
+    if request.app.state.public_demo_only and document_id not in PUBLIC_DEMO_IDS:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
     service = (
         DocumentCatalogService()
     )

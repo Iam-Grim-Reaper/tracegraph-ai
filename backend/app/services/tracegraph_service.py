@@ -10,6 +10,8 @@ from app.services.document_catalog_service import (
     DocumentCatalogService,
 )
 from app.core.observability import log_event
+from app.core.config import settings
+from app.demo.public_corpus import PUBLIC_DEMO_DOCUMENTS, PUBLIC_DEMO_IDS, is_public_demo_mode
 
 
 logger = logging.getLogger(__name__)
@@ -203,7 +205,22 @@ class TraceGraphService:
         if not question:
             raise ValueError("Question cannot be empty")
         normalized_document_ids = self._normalize_document_ids(document_ids)
-        if normalized_document_ids:
+        if is_public_demo_mode(settings):
+            # Explicit requests cannot escape the fixed public corpus.
+            if normalized_document_ids is not None:
+                if not set(normalized_document_ids).issubset(PUBLIC_DEMO_IDS):
+                    raise ValueError("Selected document is not available in the public demo.")
+                self._validate_document_ids(normalized_document_ids)
+            else:
+                ready = DocumentCatalogService().get_ready_filenames(PUBLIC_DEMO_IDS)
+                normalized_document_ids = [
+                    doc.document_id
+                    for doc in PUBLIC_DEMO_DOCUMENTS
+                    if ready.get(doc.document_id) == doc.filename
+                ]
+                if not normalized_document_ids:
+                    raise ValueError("Public demo documents are not ready yet.")
+        elif normalized_document_ids:
             self._validate_document_ids(normalized_document_ids)
         return question, normalized_document_ids
 
