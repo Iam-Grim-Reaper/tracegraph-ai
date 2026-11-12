@@ -30,6 +30,9 @@ class Neo4jGraphStore:
                 settings.neo4j_username,
                 settings.neo4j_password,
             ),
+            connection_timeout=settings.neo4j_connection_timeout_seconds,
+            connection_acquisition_timeout=settings.neo4j_acquisition_timeout_seconds,
+            max_transaction_retry_time=settings.neo4j_max_transaction_retry_seconds,
         )
 
     def verify_connectivity(self) -> None:

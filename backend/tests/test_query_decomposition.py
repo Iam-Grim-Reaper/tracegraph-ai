@@ -144,3 +144,46 @@ def test_schema_enforces_maximum_three_subquestions():
         pass
     else:
         raise AssertionError("four subquestions must be rejected")
+
+
+def test_subquestion_ids_are_canonical_and_consecutive():
+    import pytest
+
+    with pytest.raises(ValueError):
+        DecompositionPlan(subquestions=[
+            SubQuestion(id="q2", question="Second first"),
+            SubQuestion(id="q3", question="Third second"),
+        ])
+
+    with pytest.raises(ValueError):
+        SubQuestion(id="previous_step", question="Invalid citation prefix")
+
+    with pytest.raises(ValueError):
+        DecompositionPlan(subquestions=[
+            SubQuestion(id="q1", question="One"),
+            SubQuestion(id="q3", question="Three"),
+        ])
+
+
+def test_decomposition_all_failed_returns_truly_empty_research_context():
+    from app.agents.research_agent import ResearchAgent
+    from app.agents.verification_agent import VerificationAgent
+
+    class AlwaysFails(FakeAdaptive):
+        def __call__(self, state):
+            raise RuntimeError("both retrieval channels unavailable")
+
+    result = ConditionalDecompositionRetriever(
+        AlwaysFails(), FakeDecomposer(plan())
+    )({"question": "Which method is discussed and which person developed it?"})
+    assert result["decomposition_degraded"] is True
+    assert result["research_context"] == ""
+    # No provider client is constructed or called for empty evidence.
+    research = ResearchAgent.__new__(ResearchAgent)
+    draft = research.research("Which method?", result["research_context"], "fused")
+    assert draft.used_evidence_labels == []
+    verify = VerificationAgent.__new__(VerificationAgent)
+    decision = verify.verify(
+        "Which method?", draft.answer, result["research_context"]
+    )
+    assert decision.passed is False

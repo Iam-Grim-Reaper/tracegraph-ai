@@ -1,4 +1,5 @@
 import logging
+import re
 from threading import Lock
 from time import perf_counter
 
@@ -233,26 +234,36 @@ class TraceGraphService:
             if item.get("document_id") and not item.get("filename")
         }
         if missing_filenames:
-            documents_by_id = {
-                document.document_id: document.filename
-                for document in DocumentCatalogService().list_documents()
-                if document.document_id in missing_filenames
-            }
+            documents_by_id = DocumentCatalogService().get_ready_filenames(
+                missing_filenames
+            )
             for item in evidence_items:
                 if not item.get("filename") and item.get("document_id"):
                     item["filename"] = documents_by_id.get(item["document_id"])
 
-        used_labels = result.get("used_evidence_labels", [])
-        verified = result.get("verification_passed", False)
-        degraded = result.get("degraded", False)
-        decomposition_degraded = result.get("decomposition_degraded", False)
+        # Final status must describe the answer actually returned, not
+        # citation labels in the discarded research draft.
+        has_final_citations = bool(re.search(
+            r"\[(?:Graph )?Evidence (?:[a-z]\d+-)?\d+\]",
+            final_answer,
+            flags=re.IGNORECASE,
+        ))
+        verifier_passed = bool(result.get("verification_passed", False))
+        degraded = bool(result.get("degraded", False))
+        decomposition_degraded = bool(result.get("decomposition_degraded", False))
+        fully_verified = verifier_passed and not degraded and not decomposition_degraded
         if degraded:
             answer_status = "degraded_retrieval"
-        elif verified and used_labels:
+        elif decomposition_degraded:
+            answer_status = (
+                "partial_grounded_answer" if has_final_citations
+                else "grounded_abstention"
+            )
+        elif fully_verified and has_final_citations:
             answer_status = "verified_answer"
-        elif verified:
+        elif fully_verified:
             answer_status = "verified_abstention"
-        elif used_labels or decomposition_degraded:
+        elif has_final_citations:
             answer_status = "partial_grounded_answer"
         else:
             answer_status = "grounded_abstention"
@@ -310,12 +321,7 @@ class TraceGraphService:
             "evidence_items": evidence_items,
             "answer_status": answer_status,
 
-            "verified": (
-                result.get(
-                    "verification_passed",
-                    False,
-                )
-            ),
+            "verified": fully_verified,
 
             "verification_reason": (
                 result.get(
@@ -399,15 +405,9 @@ class TraceGraphService:
             DocumentCatalogService()
         )
 
-        indexed_documents = (
-            catalog.list_documents()
-        )
-
-        indexed_ids = {
-            document.document_id
-            for document
-            in indexed_documents
-        }
+        # An indexed document_id lookup avoids fetching the full catalog
+        # and computing all graph statistics for every scoped chat request.
+        indexed_ids = set(catalog.get_ready_filenames(document_ids))
 
         missing_ids = [
             document_id

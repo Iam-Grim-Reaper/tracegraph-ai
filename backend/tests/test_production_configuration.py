@@ -317,3 +317,61 @@ def test_mock_external_outage_does_not_fail_local_readiness(
     local_client_constructors,
 ):
     assert health_module.readiness_failures(local_settings) == []
+
+
+def test_deep_readiness_checks_storage_without_leaking_errors(monkeypatch, local_settings):
+    from app.api.routes import health as health_route
+
+    events = []
+
+    class FakeQdrant:
+        def __init__(self, **kwargs):
+            events.append("qdrant_construct")
+        def get_collection(self, name):
+            events.append("qdrant_query")
+            return object()
+        def close(self):
+            events.append("qdrant_close")
+
+    class FakeNeo4jDriver:
+        def verify_connectivity(self):
+            events.append("neo4j_verify")
+            raise RuntimeError("private instance identifier and credential")
+        def close(self):
+            events.append("neo4j_close")
+
+    monkeypatch.setattr(health_route, "QdrantClient", FakeQdrant)
+    monkeypatch.setattr(
+        health_route.GraphDatabase, "driver", lambda *args, **kwargs: FakeNeo4jDriver(),
+    )
+
+    result = health_route.dependency_failures(local_settings)
+    assert result == [{
+        "component": "neo4j",
+        "status": "failed",
+        "reason": "storage_unavailable",
+    }]
+    assert "qdrant_query" in events and "neo4j_verify" in events
+    assert "qdrant_close" in events and "neo4j_close" in events
+
+    monkeypatch.setattr(health_route, "settings", local_settings)
+    monkeypatch.setattr(health_route, "readiness_failures", lambda settings: [])
+    with TestClient(create_app(local_settings)) as client:
+        response = client.get("/ready?deep=true")
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert "private instance identifier" not in response.text
+
+
+def test_deep_readiness_opt_in_does_not_affect_default_endpoint(monkeypatch, local_settings):
+    from app.api.routes import health as health_route
+
+    monkeypatch.setattr(
+        health_route, "dependency_failures",
+        lambda settings: pytest.fail("network probe should not run by default"),
+    )
+    monkeypatch.setattr(health_route, "settings", local_settings)
+    monkeypatch.setattr(health_route, "readiness_failures", lambda settings: [])
+    with TestClient(create_app(local_settings)) as client:
+        response = client.get("/ready")
+    assert response.status_code == 200

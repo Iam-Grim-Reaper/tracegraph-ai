@@ -132,7 +132,11 @@ def test_catalog_queries_exclude_indexing_and_failed(monkeypatch):
 def test_scope_validation_rejects_non_ready_document(monkeypatch):
     from app.services import tracegraph_service as module
 
-    monkeypatch.setattr(module.DocumentCatalogService, "list_documents", lambda self: [])
+    monkeypatch.setattr(
+        module.DocumentCatalogService,
+        "get_ready_filenames",
+        lambda self, document_ids: {},
+    )
     with pytest.raises(ValueError, match="do not exist"):
         module.TraceGraphService._validate_document_ids(["indexing-doc"])
 

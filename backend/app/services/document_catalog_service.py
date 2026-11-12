@@ -54,6 +54,29 @@ class DocumentCatalogService:
     - graph statistics
     """
 
+    def get_ready_filenames(self, document_ids: list[str] | set[str]) -> dict[str, str]:
+        """Resolve only requested ready documents, without graph aggregations.
+
+        Uses the indexed Document.document_id lookup. This is intentionally
+        separate from list_documents(), whose richer counts are for the UI.
+        """
+        if not document_ids:
+            return {}
+        rows = _get_catalog_store().query(
+            """
+            MATCH (d:Document)
+            WHERE d.document_id IN $document_ids
+              AND d.indexing_status = 'ready'
+            RETURN d.document_id AS document_id, d.filename AS filename
+            """,
+            {"document_ids": sorted(set(document_ids))},
+        )
+        return {
+            str(row["document_id"]): str(row["filename"])
+            for row in rows
+            if row.get("document_id") and row.get("filename")
+        }
+
     def list_documents(
         self,
     ) -> list[

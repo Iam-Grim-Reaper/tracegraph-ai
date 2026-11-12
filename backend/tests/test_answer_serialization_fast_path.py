@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from app.services import tracegraph_service as module
 
 
@@ -34,9 +32,9 @@ def test_missing_source_filename_is_backfilled(monkeypatch):
     calls = []
 
     class Catalog:
-        def list_documents(self):
-            calls.append(True)
-            return [SimpleNamespace(document_id="doc-1", filename="resume.txt")]
+        def get_ready_filenames(self, document_ids):
+            calls.append(set(document_ids))
+            return {"doc-1": "resume.txt"}
 
     monkeypatch.setattr(module, "DocumentCatalogService", Catalog)
     evidence = {"label": "Evidence 1", "document_id": "doc-1"}
@@ -44,6 +42,31 @@ def test_missing_source_filename_is_backfilled(monkeypatch):
         {"evidence_items": [evidence]}, ["doc-1"]
     )
 
-    assert calls == [True]
+    assert calls == [{"doc-1"}]
     assert result["evidence_items"][0]["filename"] == "resume.txt"
     assert "filename" not in evidence
+
+
+def test_rejected_draft_citations_do_not_turn_uncited_abstention_into_partial_answer():
+    response = module.TraceGraphService._serialize_result(
+        {
+            "final_answer": "The provided evidence was insufficient.",
+            "used_evidence_labels": ["Evidence 1"],
+            "verification_passed": False,
+        }, None,
+    )
+    assert response["answer_status"] == "grounded_abstention"
+    assert response["verified"] is False
+
+
+def test_degraded_retrieval_cannot_report_fully_verified_answer():
+    response = module.TraceGraphService._serialize_result(
+        {
+            "final_answer": "A supported fact [Evidence 1]",
+            "used_evidence_labels": ["Evidence 1"],
+            "verification_passed": True,
+            "degraded": True,
+        }, None,
+    )
+    assert response["answer_status"] == "degraded_retrieval"
+    assert response["verified"] is False

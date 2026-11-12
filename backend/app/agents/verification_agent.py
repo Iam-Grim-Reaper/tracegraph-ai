@@ -243,12 +243,39 @@ VERIFICATION RULES
                 "an empty response"
             )
 
-        return (
-            VerificationDecision
-            .model_validate_json(
-                response.text
+        decision = VerificationDecision.model_validate_json(response.text)
+
+        # The verifier is itself a language model. Never let it add a
+        # citation identifier that is absent from retrieved evidence.
+        # Independently recheck the *final* answer, not only the draft.
+        final_labels = self._extract_labels(decision.final_answer)
+        invalid_final_labels = final_labels - available_labels
+        if invalid_final_labels:
+            return VerificationDecision(
+                passed=False,
+                reason="Final answer includes an unavailable evidence label.",
+                unsupported_claims=["Unavailable citation in final answer"],
+                final_answer=(
+                    "I could not verify the final answer against the "
+                    "retrieved evidence."
+                ),
             )
-        )
+
+        # A purportedly verified factual response must not silently lose
+        # all citations that grounded the original draft. This also covers
+        # the case where a model returns a bare assertion without sources.
+        if decision.passed and cited_labels and not final_labels:
+            return VerificationDecision(
+                passed=False,
+                reason="Final answer dropped its retrieved evidence citations.",
+                unsupported_claims=["Missing final-answer citations"],
+                final_answer=(
+                    "I could not verify a source-cited final answer "
+                    "from the retrieved evidence."
+                ),
+            )
+
+        return decision
 
     def rewrite(
         self,

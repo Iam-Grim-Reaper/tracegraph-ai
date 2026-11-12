@@ -100,8 +100,9 @@ class AdaptiveEvidenceRetriever:
         self.hybrid_store = hybrid_store or HybridStore()
 
         if graph_retriever is None:
+            # Driver construction is lazy: a graph outage is handled by the
+            # graph probe's degraded-mode path, not by failing chat startup.
             graph_store = Neo4jGraphStore()
-            graph_store.verify_connectivity()
             self.graph_retriever = GraphQueryRetriever(graph_store)
         else:
             self.graph_retriever = graph_retriever
@@ -123,33 +124,31 @@ class AdaptiveEvidenceRetriever:
         document_ids = state.get("document_ids")
         requires_decomposition = self._requires_decomposition(question)
 
-        # ---------------------------------------------------------
-        # Query embedding
-        # ---------------------------------------------------------
-
-        embedding_started = perf_counter()
-
-        query_vector = self.embedding_service.embed_query(
-            question
-        )
-
-        query_embedding_latency_ms = (
-            perf_counter() - embedding_started
-        ) * 1000
-
-        # ---------------------------------------------------------
-        # Parallel retrieval probes
-        # ---------------------------------------------------------
-
+        # Query embedding and Qdrant share a dependency, but the graph
+        # probe does not need the query vector. Execute the full hybrid
+        # chain in parallel with Neo4j instead of embedding first and
+        # only then launching both searches. This preserves retrieval
+        # semantics and overlaps network latency on the critical path.
         hybrid_error = None
         graph_error = None
         hybrid_latency = None
         graph_latency = None
+        query_embedding_latency_ms = None
+        qdrant_call_count = 0
         neo4j_call_count = 1
 
         def hybrid_probe():
-            probe_started = perf_counter()
+            nonlocal query_embedding_latency_ms, qdrant_call_count
+            embedding_started = perf_counter()
+            try:
+                query_vector = self.embedding_service.embed_query(question)
+            finally:
+                query_embedding_latency_ms = (
+                    perf_counter() - embedding_started
+                ) * 1000
 
+            probe_started = perf_counter()
+            qdrant_call_count = 1
             result = self.hybrid_store.hybrid_search(
                 query=question,
                 dense_vector=query_vector,
@@ -157,11 +156,7 @@ class AdaptiveEvidenceRetriever:
                 candidate_limit=settings.adaptive_hybrid_candidate_limit,
                 document_ids=document_ids,
             )
-
-            return (
-                result,
-                (perf_counter() - probe_started) * 1000,
-            )
+            return result, (perf_counter() - probe_started) * 1000
 
         def graph_probe():
             probe_started = perf_counter()
@@ -297,9 +292,11 @@ class AdaptiveEvidenceRetriever:
 
         reranker_started = perf_counter()
 
-        scores = self._get_reranker().score_texts(
-            question,
-            reranker_texts,
+        # Loading a transformer on a completely empty retrieval response
+        # adds cold-start seconds but cannot change the answer. Keep it lazy.
+        scores = (
+            self._get_reranker().score_texts(question, reranker_texts)
+            if reranker_texts else []
         )
 
         reranker_latency_ms = (
@@ -530,7 +527,7 @@ class AdaptiveEvidenceRetriever:
                     ranked_graph
                 )
             ),
-            "qdrant_call_count": 1,
+            "qdrant_call_count": qdrant_call_count,
             "neo4j_call_count": (
                 neo4j_call_count
             ),
@@ -880,12 +877,9 @@ class AdaptiveEvidenceRetriever:
                     }
                 )
 
-        if not parts:
-            parts.append(
-                "No document-scoped retrieval "
-                "evidence found."
-            )
-
+        # No retrieved source means no research context, not a textual
+        # placeholder that could be mistaken for a piece of evidence.
+        # ResearchAgent and VerificationAgent will abstain without LLM calls.
         return (
             "\n\n".join(parts),
             chunk_ids,

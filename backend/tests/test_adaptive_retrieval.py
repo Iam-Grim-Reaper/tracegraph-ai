@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from threading import Event
 
 import pytest
 
@@ -209,7 +210,7 @@ def test_no_usable_evidence_uses_abstention_context(monkeypatch):
     result = node({"question": "missing answer"})
     assert result["retrieval_route"] == "fused"
     assert result["retrieved_chunk_ids"] == []
-    assert result["research_context"].startswith("No document-scoped")
+    assert result["research_context"] == ""
 
 
 def test_scoped_short_identity_question_keeps_low_score_text(monkeypatch):
@@ -345,3 +346,85 @@ def test_chunk_seeded_graph_probe_is_bounded_and_scoped():
         "document_ids": ["doc-1"],
         "limit": 6,
     }
+
+
+def test_embedding_and_graph_probe_start_in_parallel(monkeypatch):
+    """An embedding provider call must no longer block the graph search."""
+    monkeypatch.setattr(
+        "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold",
+        0.0,
+    )
+    embedding_entered = Event()
+    graph_entered = Event()
+
+    class CoordinatedEmbedding:
+        def embed_query(self, query):
+            embedding_entered.set()
+            assert graph_entered.wait(3.0), "graph probe did not overlap embedding"
+            return [0.1, 0.2]
+
+    class CoordinatedGraph(FakeGraphRetriever):
+        def retrieve(self, **kwargs):
+            graph_entered.set()
+            assert embedding_entered.wait(3.0), "embedding did not overlap graph"
+            return super().retrieve(**kwargs)
+
+    node = AdaptiveEvidenceRetriever(
+        CoordinatedEmbedding(),
+        FakeHybridStore([point()]),
+        CoordinatedGraph([fact()]),
+        FakeReranker([4.0, 5.0]),
+    )
+    result = node({"question": "who developed Grad-CAM", "document_ids": ["doc-1"]})
+    assert result["retrieval_route"] == "fused"
+    assert result["query_embedding_latency_ms"] >= 0
+    assert result["hybrid_probe_latency_ms"] >= 0
+    assert result["graph_probe_latency_ms"] >= 0
+    assert result["qdrant_call_count"] == 1
+
+
+def test_embedding_failure_can_use_graph_evidence(monkeypatch):
+    """A failed embed is a hybrid failure, not a graph retrieval failure."""
+    monkeypatch.setattr(
+        "app.agents.adaptive_retrieval.settings.adaptive_evidence_relevance_threshold",
+        0.0,
+    )
+
+    class FailingEmbedding:
+        def embed_query(self, question):
+            raise RuntimeError("embedding provider unavailable")
+
+    hybrid = FakeHybridStore([point()])
+    node = AdaptiveEvidenceRetriever(
+        FailingEmbedding(),
+        hybrid,
+        FakeGraphRetriever([fact()]),
+        FakeReranker([4.0]),
+    )
+    response = node({"question": "who developed Grad-CAM"})
+    assert response["retrieval_route"] == "graph"
+    assert response["degraded"] is True
+    assert response["degradation_reason"] == "hybrid_unavailable"
+    assert response["query_embedding_call_count"] == 1
+    assert response["qdrant_call_count"] == 0
+    assert hybrid.calls == 0
+    assert response["graph_fact_count"] == 1
+
+
+def test_empty_evidence_does_not_initialize_crossencoder():
+    node = AdaptiveEvidenceRetriever(
+        FakeEmbeddingService(),
+        FakeHybridStore([]),
+        FakeGraphRetriever([]),
+        reranker=None,
+    )
+
+    def unexpected_model_load():
+        raise AssertionError("No candidate evidence: model must stay unloaded")
+
+    node._get_reranker = unexpected_model_load
+    result = node({"question": "unsupported question"})
+    assert result["crossencoder_call_count"] == 0
+    assert result["reranker_input_count"] == 0
+    assert result["retrieved_chunk_ids"] == []
+    assert result["research_context"] == ""

@@ -11,7 +11,7 @@ from app.core.provider_resilience import call_with_provider_resilience, create_g
 
 
 class SubQuestion(BaseModel):
-    id: str
+    id: str = Field(pattern=r"^q[123]$")
     question: str = Field(min_length=1)
     depends_on: list[str] = Field(default_factory=list)
 
@@ -22,9 +22,10 @@ class DecompositionPlan(BaseModel):
     @model_validator(mode="after")
     def validate_dependencies(self):
         seen = set()
-        for item in self.subquestions:
-            if item.id in seen or any(value not in seen for value in item.depends_on):
-                raise ValueError("Sub-question dependencies must be unique and ordered")
+        for index, item in enumerate(self.subquestions, start=1):
+            # Citation labels are tied to canonical q1/q2/q3 identifiers.
+            if item.id != f"q{index}" or any(value not in seen for value in item.depends_on):
+                raise ValueError("Sub-question IDs must be q1/q2/q3 in dependency order")
             seen.add(item.id)
         return self
 
@@ -119,6 +120,8 @@ class ConditionalDecompositionRetriever:
         neo4j_calls = 0
         crossencoder_calls = 0
         evidence_items = []
+        channel_degraded = False
+        channel_degradation_reason = None
 
         for item in plan.subquestions:
             grounded = []
@@ -144,6 +147,13 @@ class ConditionalDecompositionRetriever:
                 metadata.append({"id": item.id, "question": item.question, "route": None, "evidence_count": 0, "depends_on": item.depends_on})
                 continue
             results[item.id] = result
+            if result.get("degraded", False):
+                channel_degraded = True
+                channel_degradation_reason = (
+                    channel_degradation_reason
+                    or result.get("degradation_reason")
+                    or "retrieval_channel_unavailable"
+                )
             embedding_calls += result.get("query_embedding_call_count", 0)
             qdrant_calls += result.get("qdrant_call_count", 0)
             neo4j_calls += result.get("neo4j_call_count", 0)
@@ -182,7 +192,10 @@ class ConditionalDecompositionRetriever:
             "final_route": "fused",
             "routing_strategy": "adaptive_evidence",
             "routing_reason": "Evidence was gathered for dependent parts of the question.",
-            "research_context": "\n\n".join(contexts) or "No document-scoped retrieval evidence found.",
+            # Do not send a synthetic 'no evidence' sentence to the research
+            # model as though it were a retrieved source. Empty context
+            # activates deterministic abstention rather than a paid LLM call.
+            "research_context": "\n\n".join(contexts),
             "retrieved_chunk_ids": chunk_ids,
             "graph_fact_count": graph_count,
             "requires_decomposition": True,
@@ -193,7 +206,8 @@ class ConditionalDecompositionRetriever:
             "subquestion_count": len(plan.subquestions),
             "subquestions": metadata,
             "query_embedding_call_count": embedding_calls,
-            "degraded": False,
+            "degraded": channel_degraded,
+            "degradation_reason": channel_degradation_reason,
             "qdrant_call_count": qdrant_calls,
             "neo4j_call_count": neo4j_calls,
             "crossencoder_call_count": crossencoder_calls,
