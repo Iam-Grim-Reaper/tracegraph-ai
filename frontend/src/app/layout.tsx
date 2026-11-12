@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 
 
 export const metadata: Metadata = {
-  title: "TraceGraph",
+  title: "TraceGraph — Evidence-first research",
   description:
     "Evidence-first document intelligence with hybrid retrieval, knowledge graphs, and verification.",
 };
