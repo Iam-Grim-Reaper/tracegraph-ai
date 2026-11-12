@@ -36,3 +36,5 @@ TraceGraph's production audit found a 56.6-second `GET /api/documents` failure d
 Keep this on a feature branch until backend unit tests, frontend lint/typecheck/build, and the preview deployment pass. No database migration or credential rotation is required.
 
 - Skip loading the CPU cross-encoder entirely when both retrieval channels return zero candidates. This avoids unnecessary model initialization on empty collections and abstention paths.
+
+- Empty retrieval results now return a genuinely empty context instead of synthetic placeholder text, allowing the existing research and verification fast paths to avoid unnecessary provider calls on unsupported questions.

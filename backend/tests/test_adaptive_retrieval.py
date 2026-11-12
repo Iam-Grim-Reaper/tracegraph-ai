@@ -210,7 +210,7 @@ def test_no_usable_evidence_uses_abstention_context(monkeypatch):
     result = node({"question": "missing answer"})
     assert result["retrieval_route"] == "fused"
     assert result["retrieved_chunk_ids"] == []
-    assert result["research_context"].startswith("No document-scoped")
+    assert result["research_context"] == ""
 
 
 def test_scoped_short_identity_question_keeps_low_score_text(monkeypatch):

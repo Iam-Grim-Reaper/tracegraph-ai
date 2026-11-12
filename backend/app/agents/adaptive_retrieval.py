@@ -877,12 +877,9 @@ class AdaptiveEvidenceRetriever:
                     }
                 )
 
-        if not parts:
-            parts.append(
-                "No document-scoped retrieval "
-                "evidence found."
-            )
-
+        # No retrieved source means no research context, not a textual
+        # placeholder that could be mistaken for a piece of evidence.
+        # ResearchAgent and VerificationAgent will abstain without LLM calls.
         return (
             "\n\n".join(parts),
             chunk_ids,
