@@ -78,7 +78,10 @@ class Settings(BaseSettings):
         "gemini-3.5-flash-lite"
     )
 
-    provider_max_attempts: int = Field(default=3, ge=1, le=3)
+    # API requests remain capped at the default 3 attempts. A dedicated
+    # offline indexing worker may opt into longer retries, since a temporary
+    # generation outage should not destroy hours of ingestion progress.
+    provider_max_attempts: int = Field(default=3, ge=1, le=12)
     provider_default_timeout_seconds: float = Field(default=60.0, gt=0)
     provider_long_timeout_seconds: float = Field(default=120.0, gt=0)
     provider_retry_base_delay_seconds: float = Field(default=0.5, ge=0)

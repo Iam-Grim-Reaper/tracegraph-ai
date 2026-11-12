@@ -38,6 +38,14 @@ jobs:
           cache-dependency-glob: backend/uv.lock
       - run: uv python install 3.11
       - run: uv sync --frozen
+      - name: Restore completed graph-extraction batches
+        if: inputs.mode == 'index'
+        uses: actions/cache/restore@v4
+        with:
+          path: backend/.cache/graph_extractions
+          key: tracegraph-public-demo-graph-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            tracegraph-public-demo-graph-v2-
       - name: Validate fixed files and extraction
         # Smoke-test the exact CLI path used by operator workflows.
         run: uv run --no-sync python tools/seed_public_demo.py --mode preflight
@@ -67,7 +75,9 @@ jobs:
           CORS_ALLOWED_ORIGINS: https://tracegraph-ai.vercel.app
           # Indexing may hit a per-minute free-tier Gemini quota. Unlike
           # interactive API requests, the operator job can honor RetryInfo.
-          PROVIDER_RETRY_MAX_DELAY_SECONDS: '75'
+          PROVIDER_MAX_ATTEMPTS: '10'
+          PROVIDER_RETRY_BASE_DELAY_SECONDS: '2'
+          PROVIDER_RETRY_MAX_DELAY_SECONDS: '90'
           EMBEDDING_INGEST_TEXTS_PER_MINUTE: '80'
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           QDRANT_URL: ${{ secrets.QDRANT_URL }}
@@ -85,3 +95,9 @@ jobs:
           RERANKER_MODEL_NAME: ${{ vars.RERANKER_MODEL_NAME || 'cross-encoder/ms-marco-MiniLM-L6-v2' }}
         run: |
           uv run --no-sync python tools/seed_public_demo.py --mode "${{ inputs.mode }}"
+      - name: Save completed graph-extraction batches for retry
+        if: ${{ always() && inputs.mode == 'index' }}
+        uses: actions/cache/save@v4
+        with:
+          path: backend/.cache/graph_extractions
+          key: tracegraph-public-demo-graph-v2-${{ github.run_id }}-${{ github.run_attempt }}
