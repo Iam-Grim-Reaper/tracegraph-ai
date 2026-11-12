@@ -269,3 +269,73 @@ def test_graph_extraction_400_is_not_retried(no_component_sleep):
     with pytest.raises(errors.ClientError):
         extractor._extract_batch(doc, [chunk])
     assert models.calls == 1
+
+
+def test_google_retry_info_without_retry_after_header(monkeypatch):
+    """The real 429 embeds retryDelay in the provider error body."""
+    from app.core.provider_resilience import _retry_after_seconds, _retry_delay
+    failure = errors.ClientError(
+        429,
+        {
+            "message": "Quota exceeded for embed content requests. Please retry in 31.263s.",
+            "details": [{"retryDelay": "31s"}],
+        },
+    )
+    assert _retry_after_seconds(failure) == pytest.approx(31.263)
+    monkeypatch.setattr(settings, "provider_retry_max_delay_seconds", 75.0)
+    assert _retry_delay(failure, 1, 0.0) == pytest.approx(31.263)
+
+
+def test_document_embedding_pacing_counts_texts_not_batches(monkeypatch):
+    """80 embedded texts per minute remains below the 100 RPM free tier."""
+    from app.retrieval import embeddings as embedding_module
+
+    now = [100.0]
+    waits = []
+    monkeypatch.setattr(embedding_module, "monotonic", lambda: now[0])
+
+    def advance(seconds):
+        waits.append(seconds)
+        now[0] += seconds
+
+    monkeypatch.setattr(embedding_module, "sleep", advance)
+    monkeypatch.setattr(settings, "embedding_ingest_texts_per_minute", 32)
+
+    requested = []
+    def embed(**kwargs):
+        requested.append(len(kwargs["contents"]))
+        return SimpleNamespace(
+            embeddings=[SimpleNamespace(values=[0.1, 0.2]) for _ in kwargs["contents"]]
+        )
+
+    service = GeminiEmbeddingService.__new__(GeminiEmbeddingService)
+    service.client = SimpleNamespace(models=SimpleNamespace(embed_content=embed))
+    service.model = "test-model"
+    service.dimensions = 2
+    texts = ["safe source document text"] * 40
+    results = service.embed_documents(texts, batch_size=16)
+    assert len(results) == 40
+    assert requested == [16, 16, 8]
+    assert len(waits) == 1 and waits[0] >= 60
+    assert all(v == [0.1, 0.2] for v in results)
+
+
+def test_paid_embedding_ingestion_can_disable_pacing(monkeypatch):
+    from app.retrieval import embeddings as embedding_module
+    monkeypatch.setattr(settings, "embedding_ingest_texts_per_minute", 0)
+    monkeypatch.setattr(
+        embedding_module,
+        "sleep",
+        lambda seconds: (_ for _ in ()).throw(AssertionError("Unexpected rate-limit sleep")),
+    )
+    service = GeminiEmbeddingService.__new__(GeminiEmbeddingService)
+    service.client = SimpleNamespace(
+        models=SimpleNamespace(
+            embed_content=lambda **kwargs: SimpleNamespace(
+                embeddings=[SimpleNamespace(values=[1.0, 2.0]) for _ in kwargs["contents"]]
+            )
+        )
+    )
+    service.model = "test-model"
+    service.dimensions = 2
+    assert len(service.embed_documents(["test"] * 22)) == 22

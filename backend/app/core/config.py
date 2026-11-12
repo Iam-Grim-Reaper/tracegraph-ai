@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     embedding_model: str = "gemini-embedding-2"
     embedding_dimensions: int = Field(default=768, gt=0, le=4096)
+    # Conservative per-text RPM for long document indexing on a free-tier
+    # Gemini API project. 0 disables pacing for paid/high-quota projects.
+    embedding_ingest_texts_per_minute: int = Field(default=80, ge=0, le=10000)
 
     generation_model: str = "gemini-3.6-flash"
     contextualization_model: str = "gemini-3.5-flash-lite"

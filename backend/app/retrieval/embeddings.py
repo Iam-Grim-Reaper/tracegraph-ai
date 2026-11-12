@@ -1,3 +1,6 @@
+from collections import deque
+from time import monotonic, sleep
+
 from google.genai import types
 
 from app.core.config import settings
@@ -56,10 +59,14 @@ class GeminiEmbeddingService:
 
         all_embeddings: list[list[float]] = []
 
-        for start in range(0, len(texts), batch_size):
-            batch = texts[
-                start : start + batch_size
-            ]
+        # Google's free-tier per-minute quota is counted per embedded text,
+        # not per Python batch. Limit ingestion throughput before provider
+        # calls; interactive query embeddings are deliberately unaffected.
+        per_minute = settings.embedding_ingest_texts_per_minute
+        effective_batch_size = min(batch_size, per_minute) if per_minute else batch_size
+        for start in range(0, len(texts), effective_batch_size):
+            batch = texts[start : start + effective_batch_size]
+            self._reserve_ingestion_embedding_budget(len(batch))
 
             contents = [
                 types.Content(
@@ -113,6 +120,28 @@ class GeminiEmbeddingService:
                 all_embeddings.append(embedding)
 
         return all_embeddings
+
+    def _reserve_ingestion_embedding_budget(self, count: int) -> None:
+        limit = settings.embedding_ingest_texts_per_minute
+        if not limit:
+            return
+        if count > limit:
+            raise ValueError("Embedding batch exceeds ingestion quota limit")
+
+        # One meter per indexing service invocation. The queue contains
+        # timestamps for individual embedded texts rather than API requests.
+        meter = getattr(self, "_ingest_embedding_times", None)
+        if meter is None:
+            meter = deque()
+            self._ingest_embedding_times = meter
+        while True:
+            now = monotonic()
+            while meter and now - meter[0] >= 60.0:
+                meter.popleft()
+            if len(meter) + count <= limit:
+                meter.extend([now] * count)
+                return
+            sleep(max(0.05, 60.2 - (now - meter[0])))
 
     def embed_query(
         self,

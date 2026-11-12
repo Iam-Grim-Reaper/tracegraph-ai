@@ -2,6 +2,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import random
+import re
 import time
 import logging
 from typing import TypeVar
@@ -88,9 +89,18 @@ def _retry_after_seconds(exc: Exception) -> float | None:
     headers = getattr(response, "headers", None)
     if not headers:
         return None
-    value = headers.get("retry-after")
+    value = headers.get("retry-after") if headers else None
     if not value:
-        return None
+        # Gemini supplies RetryInfo (e.g. retryDelay '31s') in the
+        # error body when HTTP Retry-After is absent. Honor this in the
+        # operator job; the existing configurable delay cap still applies.
+        message = str(exc)
+        match = re.search(
+            r"(?:Please retry in\s+|['\"]retryDelay['\"]:\s*['\"])([0-9]+(?:\.[0-9]+)?)s",
+            message,
+            flags=re.IGNORECASE,
+        )
+        return float(match.group(1)) if match else None
     try:
         return max(0.0, float(value))
     except (TypeError, ValueError):
